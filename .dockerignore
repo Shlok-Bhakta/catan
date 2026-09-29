@@ -6,3 +6,4 @@ dist
 .env.production
 .convex
 tsconfig.tsbuildinfo
+secrets

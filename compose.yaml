@@ -7,7 +7,7 @@ services:
     environment:
       INSTANCE_NAME: catan-kiwi
       INSTANCE_SECRET: ${INSTANCE_SECRET:?set INSTANCE_SECRET in .env}
-      CONVEX_CLOUD_ORIGIN: http://100.88.30.127:38431
+      CONVEX_CLOUD_ORIGIN: ${CATAN_CONVEX_URL:-http://100.88.30.127:38431}
       CONVEX_SITE_ORIGIN: http://100.88.30.127:38432
       DO_NOT_REQUIRE_SSL: "true"
       REDACT_LOGS_TO_CLIENT: "true"
@@ -36,10 +36,23 @@ services:
     build:
       context: .
       args:
-        VITE_CONVEX_URL: http://100.88.30.127:38431
+        VITE_CONVEX_URL: ${CATAN_CONVEX_URL:-http://100.88.30.127:38431}
     restart: unless-stopped
     ports:
       - "100.88.30.127:38430:80"
     depends_on:
       convex:
         condition: service_healthy
+  tunnel:
+    image: cloudflare/cloudflared@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    restart: unless-stopped
+    user: "1000:1000"
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./secrets/tunnel.json:/etc/cloudflared/credentials.json:ro
+    depends_on:
+      convex:
+        condition: service_healthy
+      web:
+        condition: service_started

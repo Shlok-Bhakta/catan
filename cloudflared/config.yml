@@ -1,0 +1,8 @@
+tunnel: d086f3d7-202e-40dc-b8d0-22dd6e0729f3
+credentials-file: /etc/cloudflared/credentials.json
+ingress:
+  - hostname: catan.shlokbhakta.dev
+    service: http://web:80
+  - hostname: catan-api.shlokbhakta.dev
+    service: http://convex:3210
+  - service: http_status:404

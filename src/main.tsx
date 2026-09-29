@@ -297,7 +297,7 @@ function Landing(p: {
               <span>J</span>
               <span>+</span>
             </div>
-            <span>3–8 players · Real-time play · Private rooms</span>
+            <span>3–8 players · 60-second turns · Private rooms</span>
           </div>
         </div>
         <div className="hero-board" aria-hidden="true">
@@ -411,10 +411,10 @@ function Landing(p: {
           <p>Live turns, trades, the robber, and all the familiar decisions.</p>
         </div>
         <div>
-          <span>03 / RETURN</span>
+          <span>03 / QUICKPLAY</span>
           <Crown />
-          <h3>Come back to it.</h3>
-          <p>Your game lives on the server. Pick up where you left off.</p>
+          <h3>Keep the table moving.</h3>
+          <p>One-minute turns pass automatically when the clock runs out.</p>
         </div>
       </section>
     </>
@@ -662,8 +662,8 @@ function GameView({
             </div>
             {g.houseRules && (
               <div className="house-note">
-                7–8 players uses a larger, custom board. The official Catan
-                rules cover up to six.
+                Seven or eight players use a larger, custom board. The official
+                Catan rules cover up to six.
               </div>
             )}
             {g.host === you ? (
@@ -680,7 +680,8 @@ function GameView({
               </div>
             )}
             <small className="minimum">
-              At least 3 players needed to begin.
+              At least 3 players needed. Quickplay: 60-second turns, 8 points to
+              win.
             </small>
           </div>
           <div className="lobby-art">

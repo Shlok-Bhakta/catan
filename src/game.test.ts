@@ -158,6 +158,16 @@ describe("game rules", () => {
     ).toBe(true);
     expect(g.phase).toBe("roll");
   });
+  it("can time out every opening placement at an eight-player table", () => {
+    let g = started(8);
+    for (let i = 0; i < 16; i++) g = expireTurn(g, g.deadlineAt);
+    expect(g.phase).toBe("roll");
+    expect(
+      g.players.every(
+        (p) => p.settlements.length === 2 && p.roads.length === 2,
+      ),
+    ).toBe(true);
+  });
   it("lets a Knight move the robber before the dice roll", () => {
     let g = finishSetup(started());
     const id = g.players[g.turn].id;
