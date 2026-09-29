@@ -592,6 +592,25 @@ export function applyAction(
     if (!g.discardIds.length) g.phase = "robber";
     return g;
   }
+  if (type === "accept") {
+    if (g.phase !== "main") fail("Trade during the active turn.");
+    const offer = g.offers.find((x) => x.id === a.offerId);
+    if (!offer) throw new Error("Offer unavailable.");
+    if (
+      offer.from !== current(g).id ||
+      offer.from === id ||
+      (offer.to && offer.to !== id)
+    )
+      fail("Offer unavailable.");
+    const seller = player(g, offer.from);
+    if (!have(seller, offer.give) || !have(p, offer.want))
+      fail("Someone lacks those resources.");
+    transfer(seller.resources, p.resources, offer.give);
+    transfer(p.resources, seller.resources, offer.want);
+    g.offers = [];
+    note(g, `${p.name} traded with ${seller.name}.`);
+    return g;
+  }
   requireTurn(g, id);
   if (type === "settlement") {
     const v = Number(a.vertex);
@@ -775,6 +794,8 @@ export function applyAction(
       fail("Choose resources you can offer.");
     const to = a.to ? String(a.to) : undefined;
     if (to && to === id) fail("Choose another player.");
+    if (to && !g.players.some((other) => other.id === to))
+      fail("Choose another player.");
     g.offers.push({
       id: crypto.randomUUID(),
       from: id,
@@ -783,19 +804,6 @@ export function applyAction(
       want: wantBag,
     });
     note(g, `${p.name} proposed a trade.`);
-  } else if (type === "accept") {
-    if (g.phase !== "main") fail("Trade during your turn.");
-    const offer = g.offers.find((x) => x.id === a.offerId);
-    if (!offer) throw new Error("Offer unavailable.");
-    if (offer.from === id || (offer.to && offer.to !== id))
-      fail("Offer unavailable.");
-    const seller = player(g, offer.from);
-    if (!have(seller, offer.give) || !have(p, offer.want))
-      fail("Someone lacks those resources.");
-    transfer(seller.resources, p.resources, offer.give);
-    transfer(p.resources, seller.resources, offer.want);
-    g.offers = [];
-    note(g, `${p.name} traded with ${seller.name}.`);
   } else if (type === "cancelOffer") {
     g.offers = g.offers.filter((x) => x.id !== a.offerId || x.from !== id);
   } else fail("Unknown action.");

@@ -107,6 +107,37 @@ describe("game rules", () => {
     expect(g.clockSeq).toBe(seq + 1);
     expect(g.deadlineAt).toBe(1000 + TURN_MS);
   });
+  it("lets another player accept an offer during the active turn", () => {
+    let g = finishSetup(started(3));
+    g.phase = "main";
+    const active = g.players[g.turn];
+    const recipient = g.players[(g.turn + 1) % 3];
+    const stranger = g.players[(g.turn + 2) % 3];
+    active.resources.wood = 1;
+    active.resources.brick = 0;
+    recipient.resources.brick = 1;
+    recipient.resources.wood = 0;
+    g = applyAction(g, active.id, {
+      type: "offer",
+      give: { wood: 1, brick: 0, wool: 0, grain: 0, ore: 0 },
+      want: { wood: 0, brick: 1, wool: 0, grain: 0, ore: 0 },
+      to: recipient.id,
+    });
+    expect(() =>
+      applyAction(g, stranger.id, { type: "accept", offerId: g.offers[0].id }),
+    ).toThrow("Offer unavailable");
+    g = applyAction(g, recipient.id, {
+      type: "accept",
+      offerId: g.offers[0].id,
+    });
+    expect(g.players.find((p) => p.id === active.id)?.resources.wood).toBe(0);
+    expect(g.players.find((p) => p.id === active.id)?.resources.brick).toBe(1);
+    expect(g.players.find((p) => p.id === recipient.id)?.resources.wood).toBe(
+      1,
+    );
+    expect(g.offers).toHaveLength(0);
+    expect(g.players[g.turn].id).toBe(active.id);
+  });
   it("automatically completes a timed-out opening placement", () => {
     let g = started(3);
     const first = g.turn;

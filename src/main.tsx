@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ConvexProvider,
@@ -11,21 +11,14 @@ import {
   BookOpen,
   Copy,
   ArrowRight,
-  Plus,
-  Users,
   Dice5,
   Home,
   Route,
   Landmark,
   Scroll,
-  Ship,
   HandCoins,
   Check,
   X,
-  Menu,
-  ChevronRight,
-  RotateCcw,
-  Crown,
   Shield,
   ExternalLink,
 } from "lucide-react";
@@ -156,7 +149,6 @@ function App() {
             </span>
           </button>
           <div className="top-actions">
-            <span className="top-caption">A place to build your story</span>
             <button className="text-button" onClick={() => setRules(true)}>
               <BookOpen size={17} /> Rules & guide
             </button>
@@ -247,13 +239,6 @@ function App() {
             </button>
           </div>
         )}
-        <footer className="site-footer">
-          <span>SETTLERS' TABLE</span>
-          <span>Gather. Trade. Build. Begin again.</span>
-          <button onClick={() => setRules(true)}>
-            How to play <ArrowRight size={14} />
-          </button>
-        </footer>
       </div>
       {rules && <Rules onClose={() => setRules(false)} />}
     </>
@@ -275,47 +260,12 @@ function Landing(p: {
   return (
     <>
       <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <span className="small-star">✦</span> THE TABLE IS OPEN
-          </div>
-          <h1>
-            A whole island.
-            <br />
-            <em>One evening.</em>
-            <br />
-            Your move.
-          </h1>
-          <p>
-            Gather your people around a living board. Make a deal, build a road,
-            and see where the next roll takes you.
-          </p>
-          <div className="hero-proof">
-            <div className="avatar-stack">
-              <span>A</span>
-              <span>M</span>
-              <span>J</span>
-              <span>+</span>
-            </div>
-            <span>3–8 players · 60-second turns · Private rooms</span>
-          </div>
-        </div>
-        <div className="hero-board" aria-hidden="true">
-          <DecorBoard />
-          <span className="board-float">
-            YOUR NEXT ADVENTURE
-            <br />
-            <strong>STARTS HERE ↗</strong>
-          </span>
-        </div>
+        <h1>Make a table.</h1>
       </section>
       <section className="entry-wrap">
         <div className="entry-card">
           <div className="entry-head">
-            <div>
-              <div className="eyebrow">PULL UP A CHAIR</div>
-              <h2>Make room for everyone.</h2>
-            </div>
+            <h2>{p.tab === "create" ? "Create a room" : "Join a room"}</h2>
             <div className="entry-tabs">
               <button
                 className={p.tab === "create" ? "active" : ""}
@@ -335,7 +285,7 @@ function Landing(p: {
             <label>
               Your name
               <input
-                placeholder="e.g. The road baron"
+                placeholder="Your name"
                 value={p.name}
                 maxLength={24}
                 onChange={(e) => p.setName(e.target.value)}
@@ -351,7 +301,7 @@ function Landing(p: {
                   >
                     {[3, 4, 5, 6, 7, 8].map((n) => (
                       <option key={n} value={n}>
-                        {n} players{n > 6 ? " · extended board" : ""}
+                        {n} players
                       </option>
                     ))}
                   </select>
@@ -367,7 +317,7 @@ function Landing(p: {
             ) : (
               <>
                 <label>
-                  Six-character room code
+                  Room code
                   <input
                     className="code-input"
                     placeholder="ABC123"
@@ -389,97 +339,8 @@ function Landing(p: {
             )}
           </div>
         </div>
-        <div className="entry-note">
-          <span className="tiny-icon">✦</span>
-          <p>
-            <strong>No accounts. No setup.</strong> Share a private room code
-            and start playing. Your seat stays yours on this browser.
-          </p>
-        </div>
-      </section>
-      <section className="features">
-        <div>
-          <span>01 / GATHER</span>
-          <Users />
-          <h3>Bring the whole crew.</h3>
-          <p>Private rooms with room codes for three to eight players.</p>
-        </div>
-        <div>
-          <span>02 / PLAY</span>
-          <Dice5 />
-          <h3>Every roll matters.</h3>
-          <p>Live turns, trades, the robber, and all the familiar decisions.</p>
-        </div>
-        <div>
-          <span>03 / QUICKPLAY</span>
-          <Crown />
-          <h3>Keep the table moving.</h3>
-          <p>One-minute turns pass automatically when the clock runs out.</p>
-        </div>
       </section>
     </>
-  );
-}
-function DecorBoard() {
-  const tiles = [
-    ["wood", -1, -1],
-    ["grain", 0, -1],
-    ["brick", 1, -1],
-    ["wool", -1, 0],
-    ["desert", 0, 0],
-    ["ore", 1, 0],
-    ["ore", -1, 1],
-    ["wood", 0, 1],
-    ["grain", 1, 1],
-  ] as const;
-  return (
-    <svg viewBox="-190 -185 380 370">
-      <defs>
-        {Object.entries(terrainColors).map(([t, c]) => (
-          <linearGradient id={"d" + t} key={t} x2=".8" y2="1">
-            <stop stopColor={c[0]} />
-            <stop offset="1" stopColor={c[1]} />
-          </linearGradient>
-        ))}
-      </defs>
-      {tiles.map(([t, q, r], i) => {
-        const { x, y } = view({ q, r });
-        return (
-          <g key={i}>
-            <polygon
-              points={hexPoints(x, y, 70)}
-              fill={`url(#d${t})`}
-              stroke="#e7d5aa"
-              strokeWidth="4"
-            />
-            <text
-              x={x}
-              y={y + 10}
-              textAnchor="middle"
-              fontSize="38"
-              opacity=".55"
-              fill="#fff"
-            >
-              {t === "wood"
-                ? "♣"
-                : t === "brick"
-                  ? "▣"
-                  : t === "wool"
-                    ? "●"
-                    : t === "grain"
-                      ? "✦"
-                      : t === "ore"
-                        ? "◆"
-                        : "☀"}
-            </text>
-          </g>
-        );
-      })}
-      <circle cx="0" cy="0" r="15" fill="#f6e9cc" />
-      <text x="0" y="5" textAnchor="middle" fill="#775b40" fontWeight="bold">
-        7
-      </text>
-    </svg>
   );
 }
 function GameView({
@@ -521,6 +382,7 @@ function GameView({
   const [devChoice, setDevChoice] = useState<Resource>("wood");
   const [roadFirst, setRoadFirst] = useState<number | null>(null);
   const [devRoad, setDevRoad] = useState(false);
+  const [boardZoom, setBoardZoom] = useState(1);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (g.phase === "setup-settlement" && mine) setTool("settlement");
@@ -566,22 +428,6 @@ function GameView({
       }
     }
   }
-  const myTurnText =
-    g.status === "lobby"
-      ? "Waiting for players to join."
-      : g.status === "finished"
-        ? `${g.players.find((p) => p.id === g.winner)?.name} won the game`
-        : g.phase.startsWith("setup")
-          ? `${active?.name} is placing ${g.phase === "setup-settlement" ? "a settlement" : "a road"}`
-          : g.phase === "discard"
-            ? "Discard before the robber moves"
-            : g.phase === "robber"
-              ? `${active?.name} is moving the robber`
-              : g.phase === "steal"
-                ? `${active?.name} is stealing a card`
-                : g.phase === "roll"
-                  ? `${active?.name} is rolling`
-                  : `${active?.name} is building & trading`;
   const rate = (r: Resource) => {
     const ports = [...me.settlements, ...me.cities].flatMap((v) =>
       g.vertices[v].port ? [g.vertices[v].port] : [],
@@ -592,9 +438,10 @@ function GameView({
     <div className="game-page">
       <div className="game-header">
         <div>
-          <div className="eyebrow">PRIVATE GAME · {g.maxPlayers} SEATS</div>
-          <h1>Island of {g.code}</h1>
-          <p>{myTurnText}</p>
+          <div className="eyebrow">
+            {g.status === "lobby" ? "LOBBY" : `TURN ${g.turnNumber || "SETUP"}`}
+          </div>
+          <h1>Room {g.code}</h1>
         </div>
         <div className="game-head-actions">
           <button
@@ -625,8 +472,7 @@ function GameView({
               })();
             }}
           >
-            <span>ROOM CODE</span>
-            <strong>{g.code}</strong>
+            <span>{copied ? "COPIED" : "COPY LINK"}</span>
             {copied ? <Check size={16} /> : <Copy size={16} />}
           </button>
           <button className="round-rule" title="Rules" onClick={openRules}>
@@ -637,12 +483,7 @@ function GameView({
       {g.status === "lobby" ? (
         <div className="lobby">
           <div className="lobby-left">
-            <div className="eyebrow">THE CREW</div>
-            <h2>Waiting at the table.</h2>
-            <p>
-              Share the room code with friends. Everyone joins from their own
-              browser.
-            </p>
+            <h2>Players</h2>
             <div className="seat-grid">
               {Array.from({ length: g.maxPlayers }, (_, i) => {
                 const p = g.players[i];
@@ -662,8 +503,7 @@ function GameView({
             </div>
             {g.houseRules && (
               <div className="house-note">
-                Seven or eight players use a larger, custom board. The official
-                Catan rules cover up to six.
+                Seven or eight players use the larger board.
               </div>
             )}
             {g.host === you ? (
@@ -675,87 +515,101 @@ function GameView({
                 Start game <ArrowRight size={18} />
               </button>
             ) : (
-              <div className="waiting">
-                <span className="pulse" /> Waiting for the host to start…
-              </div>
+              <div className="waiting">Waiting for host</div>
             )}
-            <small className="minimum">
-              At least 3 players needed. Quickplay: 60-second turns, 8 points to
-              win.
-            </small>
-          </div>
-          <div className="lobby-art">
-            <DecorBoard />
-            <div className="art-note">THE ISLAND AWAITS</div>
+            {g.players.length < 3 && (
+              <small className="minimum">3 players required</small>
+            )}
           </div>
         </div>
       ) : (
         <>
           <div className="game-layout">
             <div className="table-column">
-              <div className="board-top">
-                <div>
-                  <span className="live-dot" /> LIVE TABLE{" "}
-                  <span className="divider">/</span> TURN{" "}
-                  {g.turnNumber || "SETUP"}
+              <div className="board-shell">
+                <div className="board-top">
+                  <div>
+                    {g.phase.startsWith("setup")
+                      ? "OPENING PLACEMENT"
+                      : `TURN ${g.turnNumber}`}
+                  </div>
+                  <div className="board-top-right">
+                    {g.roll && (
+                      <span className="last-roll">
+                        LAST ROLL{" "}
+                        <b>
+                          {g.roll[0]} + {g.roll[1]} = {g.roll[0] + g.roll[1]}
+                        </b>
+                      </span>
+                    )}
+                    <div className="board-zoom" aria-label="Board zoom">
+                      <button
+                        aria-label="Zoom out"
+                        disabled={boardZoom <= 1}
+                        onClick={() =>
+                          setBoardZoom((z) => Math.max(1, z - 0.5))
+                        }
+                      >
+                        −
+                      </button>
+                      <span>{Math.round(boardZoom * 100)}%</span>
+                      <button
+                        aria-label="Zoom in"
+                        disabled={boardZoom >= 2}
+                        onClick={() =>
+                          setBoardZoom((z) => Math.min(2, z + 0.5))
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  {g.roll && (
-                    <span className="last-roll">
-                      LAST ROLL{" "}
-                      <b>
-                        {g.roll[0]} + {g.roll[1]} = {g.roll[0] + g.roll[1]}
-                      </b>
-                    </span>
+                <Board
+                  g={g}
+                  tool={tool}
+                  legal={legal}
+                  onClick={boardClick}
+                  me={you}
+                  zoom={boardZoom}
+                />
+                <div className="board-hint">
+                  {devRoad && roadFirst !== null && (
+                    <button
+                      className="one-road"
+                      onClick={() => {
+                        action({
+                          type: "playDev",
+                          card: "roadBuilding",
+                          edge1: roadFirst,
+                          edge2: -1,
+                        });
+                        setRoadFirst(null);
+                        setDevRoad(false);
+                        setTool(null);
+                      }}
+                    >
+                      Place this one road
+                    </button>
                   )}
+                  {tool === "settlement"
+                    ? "Select a glowing corner to place your settlement."
+                    : tool === "city"
+                      ? "Select one of your settlements to upgrade."
+                      : tool === "road"
+                        ? "Select a glowing edge to build a road."
+                        : tool === "robber"
+                          ? "Select a different hex for the robber."
+                          : g.phase === "setup-settlement"
+                            ? "Opening placement: settlements must be two corners apart."
+                            : g.phase === "discard"
+                              ? "Players with more than seven cards discard half."
+                              : "Select an action below when it is your turn."}
                 </div>
-              </div>
-              <Board
-                g={g}
-                tool={tool}
-                legal={legal}
-                onClick={boardClick}
-                me={you}
-              />
-              <div className="board-hint">
-                {devRoad && roadFirst !== null && (
-                  <button
-                    className="one-road"
-                    onClick={() => {
-                      action({
-                        type: "playDev",
-                        card: "roadBuilding",
-                        edge1: roadFirst,
-                        edge2: -1,
-                      });
-                      setRoadFirst(null);
-                      setDevRoad(false);
-                      setTool(null);
-                    }}
-                  >
-                    Place this one road
-                  </button>
-                )}
-                {tool === "settlement"
-                  ? "Select a glowing corner to place your settlement."
-                  : tool === "city"
-                    ? "Select one of your settlements to upgrade."
-                    : tool === "road"
-                      ? "Select a glowing edge to build a road."
-                      : tool === "robber"
-                        ? "Select a different hex for the robber."
-                        : g.phase === "setup-settlement"
-                          ? "Opening placement: settlements must be two corners apart."
-                          : g.phase === "discard"
-                            ? "Players with more than seven cards discard half."
-                            : "Select an action below when it is your turn."}
               </div>
               <div className="hand">
                 <div className="hand-heading">
-                  <div>
-                    <span className="eyebrow">YOUR HAND</span>
-                    <h3>{me.name}'s resources</h3>
-                  </div>
+                  <h3>Resources</h3>
                   <span>
                     {RESOURCES.reduce((a, r) => a + me.resources[r], 0)} cards
                   </span>
@@ -772,7 +626,7 @@ function GameView({
                   ))}
                 </div>
                 <div className="dev-hand">
-                  Development cards: {me.dev.length + me.newDev.length}{" "}
+                  Development: {me.dev.length + me.newDev.length}{" "}
                   {me.newDev.length > 0 && (
                     <span>· {me.newDev.length} available next turn</span>
                   )}
@@ -782,7 +636,7 @@ function GameView({
             <aside className="sidebar">
               <div className="panel turn-panel">
                 <div className="panel-top">
-                  <span className="eyebrow">ON THE TABLE</span>
+                  <span className="eyebrow">TURN</span>
                   <span className="phase-pill">
                     {g.phase.replace("-", " ")}
                   </span>
@@ -794,7 +648,7 @@ function GameView({
                     }
                     aria-live={secondsLeft <= 10 ? "polite" : "off"}
                   >
-                    <span>TURN CLOCK</span>
+                    <span>TIME LEFT</span>
                     <strong>{secondsLeft}s</strong>
                   </div>
                 )}
@@ -806,13 +660,13 @@ function GameView({
                     {active?.name[0]?.toUpperCase()}
                   </span>
                   <div>
-                    <small>NOW PLAYING</small>
+                    <small>PLAYING</small>
                     <h2>{active?.name}</h2>
                   </div>
                 </div>
                 {g.status === "finished" ? (
                   <div className="status-copy">
-                    The island has a new champion.
+                    {g.players.find((p) => p.id === g.winner)?.name} wins
                   </div>
                 ) : g.phase === "discard" && g.discardIds.includes(you) ? (
                   <Discard me={me} action={action} />
@@ -859,9 +713,7 @@ function GameView({
                       className={tool === "road" ? "selected" : ""}
                     >
                       <Route size={19} />
-                      <span>
-                        Build road <small>1 lumber · 1 brick</small>
-                      </span>
+                      <span>Road</span>
                       <b>→</b>
                     </button>
                     <button
@@ -872,9 +724,7 @@ function GameView({
                       className={tool === "settlement" ? "selected" : ""}
                     >
                       <Home size={19} />
-                      <span>
-                        Settlement <small>Lumber · brick · wool · grain</small>
-                      </span>
+                      <span>Settlement</span>
                       <b>→</b>
                     </button>
                     <button
@@ -885,9 +735,7 @@ function GameView({
                       className={tool === "city" ? "selected" : ""}
                     >
                       <Landmark size={19} />
-                      <span>
-                        Upgrade city <small>2 grain · 3 ore</small>
-                      </span>
+                      <span>City</span>
                       <b>→</b>
                     </button>
                     <button
@@ -898,9 +746,7 @@ function GameView({
                       className={panel === "trade" ? "selected" : ""}
                     >
                       <HandCoins size={19} />
-                      <span>
-                        Trade <small>Players or the bank</small>
-                      </span>
+                      <span>Trade</span>
                       <b>→</b>
                     </button>
                     <button
@@ -911,9 +757,7 @@ function GameView({
                       className={panel === "development" ? "selected" : ""}
                     >
                       <Scroll size={19} />
-                      <span>
-                        Development <small>Buy or play a card</small>
-                      </span>
+                      <span>Development</span>
                       <b>→</b>
                     </button>
                     <button
@@ -927,11 +771,42 @@ function GameView({
                       End turn <ArrowRight size={17} />
                     </button>
                   </div>
-                ) : (
-                  <div className="status-copy">
-                    {mine
-                      ? myTurnText
-                      : "Watch the board. Your turn is coming."}
+                ) : null}
+                {g.phase === "main" && g.offers.length > 0 && (
+                  <div className="offer-list">
+                    <h3>Offers</h3>
+                    {g.offers.map((offer) => (
+                      <div className="offer" key={offer.id}>
+                        <span>
+                          {g.players.find((p) => p.id === offer.from)?.name}:{" "}
+                          {bagText(offer.give)} for {bagText(offer.want)}
+                        </span>
+                        {offer.from === you ? (
+                          <button
+                            onClick={() =>
+                              action({ type: "cancelOffer", offerId: offer.id })
+                            }
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          (!offer.to || offer.to === you) && (
+                            <button
+                              disabled={
+                                !RESOURCES.every(
+                                  (r) => me.resources[r] >= offer.want[r],
+                                )
+                              }
+                              onClick={() =>
+                                action({ type: "accept", offerId: offer.id })
+                              }
+                            >
+                              Accept
+                            </button>
+                          )
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -977,15 +852,15 @@ function GameView({
                   </div>
                 ))}
               </div>
-              <div className="panel journal">
-                <div className="eyebrow">TABLE TALK</div>
+              <details className="panel journal">
+                <summary>Activity</summary>
                 {g.log.slice(0, 7).map((item, i) => (
                   <p key={i}>
                     <span>✦</span>
                     {item}
                   </p>
                 ))}
-              </div>
+              </details>
             </aside>
           </div>
           {panel &&
@@ -997,19 +872,15 @@ function GameView({
                   <button
                     className="drawer-close"
                     onClick={() => setPanel(null)}
+                    aria-label="Close panel"
                   >
                     <X size={19} />
                   </button>
                   {panel === "trade" ? (
                     <>
-                      <div className="eyebrow">MAKE A DEAL</div>
-                      <h2>Trade at the table.</h2>
+                      <h2>Trade</h2>
                       <div className="drawer-section">
-                        <h3>With the bank</h3>
-                        <p>
-                          Your ports set the exchange rate. Without a port,
-                          trade four of one resource for one.
-                        </p>
+                        <h3>Bank</h3>
                         <div className="inline-trade">
                           <select
                             value={r1}
@@ -1044,11 +915,7 @@ function GameView({
                       </div>
                       {
                         <div className="drawer-section">
-                          <h3>With a player</h3>
-                          <p>
-                            Choose what you give and what you want. Any player
-                            can accept a table offer.
-                          </p>
+                          <h3>Players</h3>
                           <select
                             value={target}
                             onChange={(e) => setTarget(e.target.value)}
@@ -1089,66 +956,22 @@ function GameView({
                           </button>
                         </div>
                       }
-                      {g.offers.length > 0 && (
-                        <div className="drawer-section">
-                          <h3>Open offers</h3>
-                          {g.offers.map((o) => (
-                            <div className="offer" key={o.id}>
-                              <p>
-                                {g.players.find((p) => p.id === o.from)?.name}{" "}
-                                gives {bagText(o.give)} for {bagText(o.want)}
-                              </p>
-                              {o.from === you ? (
-                                <button
-                                  onClick={() =>
-                                    action({
-                                      type: "cancelOffer",
-                                      offerId: o.id,
-                                    })
-                                  }
-                                >
-                                  Cancel
-                                </button>
-                              ) : (
-                                (!o.to || o.to === you) && (
-                                  <button
-                                    onClick={() =>
-                                      action({ type: "accept", offerId: o.id })
-                                    }
-                                  >
-                                    Accept
-                                  </button>
-                                )
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </>
                   ) : (
                     <>
-                      <div className="eyebrow">A LITTLE ADVANTAGE</div>
-                      <h2>Development cards.</h2>
-                      <p>
-                        Play one card you held before this turn. You can play it
-                        before rolling or during your action phase.
-                      </p>
+                      <h2>Development</h2>
                       {g.phase === "main" && (
                         <button
                           className="button primary wide"
                           onClick={() => action({ type: "buyDev" })}
                         >
-                          Buy a card · 1 wool, 1 grain, 1 ore{" "}
-                          <ArrowRight size={17} />
+                          Buy development <ArrowRight size={17} />
                         </button>
                       )}
                       <div className="drawer-section">
                         <h3>Your playable cards</h3>
                         {me.dev.filter((c) => c !== "victory").length === 0 ? (
-                          <p>
-                            No action cards ready. New cards can be played next
-                            turn.
-                          </p>
+                          <p>No playable cards.</p>
                         ) : (
                           me.dev
                             .filter((c) => c !== "victory")
@@ -1294,6 +1117,7 @@ function BagPicker({
             {labels[r]}
             <input
               type="number"
+              aria-label={`${title}: ${labels[r]}`}
               min="0"
               max="20"
               value={bag[r]}
@@ -1323,8 +1147,7 @@ function Discard({
   );
   return (
     <div className="discard">
-      <h3>The robber strikes.</h3>
-      <p>Discard {need} resource cards.</p>
+      <h3>Discard {need} cards</h3>
       <BagPicker title="Cards to discard" bag={bag} setBag={setBag} />
       <button
         className="button primary wide"
@@ -1341,12 +1164,14 @@ function Board({
   legal,
   onClick,
   me,
+  zoom,
 }: {
   g: Game;
   tool: string | null;
   legal: number[];
   onClick: (type: "hex" | "edge" | "vertex", n: number) => void;
   me: string;
+  zoom: number;
 }) {
   const scale = 72;
   const coords = g.hexes.map(view);
@@ -1360,8 +1185,9 @@ function Board({
     <div className="board-wrap">
       <svg
         className="board"
+        style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}
         viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
-        role="img"
+        role="group"
         aria-label="Interactive island board"
       >
         <defs>
@@ -1423,6 +1249,19 @@ function Board({
             <g
               key={i}
               onClick={() => onClick("hex", i)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onClick("hex", i);
+                }
+              }}
+              tabIndex={tool === "robber" && g.robber !== i ? 0 : -1}
+              role={tool === "robber" && g.robber !== i ? "button" : undefined}
+              aria-label={
+                tool === "robber" && g.robber !== i
+                  ? `Move robber to ${h.terrain} ${h.number || "desert"}`
+                  : undefined
+              }
               className={
                 tool === "robber" && g.robber !== i ? "clickable-hex" : ""
               }
@@ -1534,6 +1373,15 @@ function Board({
             <g
               key={i}
               onClick={() => onClick("edge", i)}
+              onKeyDown={(event) => {
+                if (target && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  onClick("edge", i);
+                }
+              }}
+              tabIndex={target ? 0 : -1}
+              role={target ? "button" : undefined}
+              aria-label={target ? `Build road at edge ${i + 1}` : undefined}
               className={target ? "board-target" : ""}
             >
               <line
@@ -1542,7 +1390,7 @@ function Board({
                 x2={b.x * scale}
                 y2={b.y * scale}
                 stroke="transparent"
-                strokeWidth="20"
+                strokeWidth="28"
               />
               {owner && (
                 <line
@@ -1583,6 +1431,19 @@ function Board({
             <g
               key={i}
               onClick={() => onClick("vertex", i)}
+              onKeyDown={(event) => {
+                if (target && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  onClick("vertex", i);
+                }
+              }}
+              tabIndex={target ? 0 : -1}
+              role={target ? "button" : undefined}
+              aria-label={
+                target
+                  ? `${tool === "city" ? "Upgrade city" : "Build settlement"} at corner ${i + 1}`
+                  : undefined
+              }
               className={target ? "board-target" : ""}
             >
               {v.port && (
@@ -1631,15 +1492,24 @@ function Board({
                 </g>
               )}
               {target && (
-                <circle
-                  cx={v.x * scale}
-                  cy={v.y * scale}
-                  r="11"
-                  fill="#fff5c8"
-                  stroke="#dcac65"
-                  strokeWidth="3"
-                  className="target-vertex"
-                />
+                <>
+                  <circle
+                    cx={v.x * scale}
+                    cy={v.y * scale}
+                    r="22"
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  <circle
+                    cx={v.x * scale}
+                    cy={v.y * scale}
+                    r="11"
+                    fill="#fff5c8"
+                    stroke="#dcac65"
+                    strokeWidth="3"
+                    className="target-vertex"
+                  />
+                </>
               )}
             </g>
           );
@@ -1649,47 +1519,125 @@ function Board({
   );
 }
 function Rules({ onClose }: { onClose: () => void }) {
-  const [section, setSection] = useState("overview");
+  const [section, setSection] = useState("quick");
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButton.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        const items = dialog.current?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled)",
+        );
+        if (!items?.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          last.focus();
+          event.preventDefault();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          first.focus();
+          event.preventDefault();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
+  }, []);
   const sections = [
-    ["overview", "The aim"],
+    ["quick", "Quick rules"],
+    ["overview", "Goal"],
     ["setup", "Set up"],
-    ["turn", "Your turn"],
-    ["building", "Building"],
-    ["trade", "Trading"],
-    ["robber", "The robber"],
+    ["turn", "Turn & timer"],
+    ["building", "Build & costs"],
+    ["trade", "Trade & ports"],
+    ["robber", "Seven & robber"],
     ["cards", "Development"],
-    ["awards", "Awards & winning"],
-    ["extended", "5–8 players"],
+    ["awards", "Awards"],
+    ["extended", "Larger games"],
   ];
   return (
     <div className="rules-back" onClick={onClose}>
-      <div className="rules-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialog}
+        className="rules-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rules-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="rules-top">
-          <div>
-            <span className="eyebrow">FIELD GUIDE</span>
-            <h2>How to play.</h2>
-          </div>
-          <button onClick={onClose}>
+          <h2 id="rules-title">Rules</h2>
+          <button ref={closeButton} onClick={onClose} aria-label="Close rules">
             <X size={23} />
           </button>
         </div>
         <div className="rules-body">
-          <nav>
+          <nav aria-label="Rule sections">
             {sections.map(([id, label]) => (
               <button
                 key={id}
                 className={section === id ? "active" : ""}
-                onClick={() => setSection(id)}
+                aria-current={section === id ? "page" : undefined}
+                onClick={() => {
+                  setSection(id);
+                  content.current?.scrollTo({ top: 0 });
+                }}
               >
                 {label}
-                <ChevronRight size={15} />
               </button>
             ))}
           </nav>
-          <article>
+          <article ref={content}>
+            {section === "quick" && (
+              <>
+                <h3>Quick rules</h3>
+                <ul className="rule-facts">
+                  <li>
+                    <strong>8 points</strong> wins on your turn.
+                  </li>
+                  <li>
+                    <strong>60 seconds</strong> for each opening settlement and
+                    road pair, then each turn.
+                  </li>
+                  <li>
+                    <strong>Clockwise turns.</strong> The server passes a
+                    timed-out turn.
+                  </li>
+                  <li>
+                    <strong>Both opening settlements</strong> collect adjacent
+                    resources when placed.
+                  </li>
+                  <li>
+                    <strong>Roll, trade, build, end.</strong> A seven triggers
+                    discards and the robber.
+                  </li>
+                </ul>
+                <h4>Building costs</h4>
+                <div className="cost-list">
+                  {Object.entries(COSTS).map(([key, bag]) => (
+                    <div key={key}>
+                      <strong>
+                        {key === "development" ? "Development" : key}
+                      </strong>
+                      <span>{bagText(bag)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             {section === "overview" && (
               <>
-                <h3>Build a life on the island.</h3>
+                <h3>Goal</h3>
                 <p>
                   Be the first player to reach <strong>8 victory points</strong>{" "}
                   on your turn. You earn points by building settlements and
@@ -1709,7 +1657,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "setup" && (
               <>
-                <h3>Find your footing.</h3>
+                <h3>Opening placement</h3>
                 <p>
                   Players place one settlement and one adjoining road in order,
                   then place a second settlement and road in reverse order. The
@@ -1725,7 +1673,12 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "turn" && (
               <>
-                <h3>Roll, trade, build.</h3>
+                <h3>Turn & timer</h3>
+                <p>
+                  You have 60 seconds for the whole turn. The clock does not
+                  reset after an action. If it runs out, the server completes
+                  required steps and passes play clockwise.
+                </p>
                 <p>
                   At the start of your turn, roll two dice. Every hex with the
                   rolled number produces its resource for each adjacent
@@ -1742,7 +1695,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "building" && (
               <>
-                <h3>Make your mark.</h3>
+                <h3>Build & costs</h3>
                 <div className="cost-list">
                   {Object.entries(COSTS).map(([key, bag]) => (
                     <div key={key}>
@@ -1764,7 +1717,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "trade" && (
               <>
-                <h3>Good deals travel far.</h3>
+                <h3>Trade & ports</h3>
                 <p>
                   On your turn, offer resources to other players. The player
                   accepting must have the requested cards, and both sides
@@ -1780,7 +1733,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "robber" && (
               <>
-                <h3>When a seven appears.</h3>
+                <h3>Seven & robber</h3>
                 <p>
                   Everyone holding more than seven resource cards discards half,
                   rounded down. After all discards, the player who rolled moves
@@ -1795,7 +1748,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "cards" && (
               <>
-                <h3>Keep something up your sleeve.</h3>
+                <h3>Development</h3>
                 <p>
                   Pay one wool, one grain, and one ore to buy a development
                   card. You cannot play an action card on the turn you bought
@@ -1825,7 +1778,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "awards" && (
               <>
-                <h3>A little glory helps.</h3>
+                <h3>Awards</h3>
                 <p>
                   The first player to play three Knights takes Largest Army,
                   worth 2 points. Another player takes it only by playing more
@@ -1842,7 +1795,7 @@ function Rules({ onClose }: { onClose: () => void }) {
             )}
             {section === "extended" && (
               <>
-                <h3>Quickplay at every table.</h3>
+                <h3>Larger games</h3>
                 <p>
                   Games with five or more players use a larger island and a
                   24-card supply of each resource. Seven and eight seats are a
@@ -1859,15 +1812,16 @@ function Rules({ onClose }: { onClose: () => void }) {
                   The first player to reach 8 points on their turn wins. These
                   quickplay rules are house rules for this table.
                 </p>
-                <a
-                  href="https://www.catan.com/understand-catan/game-rules"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Official Catan rulebooks <ExternalLink size={15} />
-                </a>
               </>
             )}
+            <a
+              className="official-rules"
+              href="https://www.catan.com/understand-catan/game-rules"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Official Catan rulebooks <ExternalLink size={15} />
+            </a>
           </article>
         </div>
       </div>
