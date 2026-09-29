@@ -18,6 +18,8 @@ npx convex dev --once
 npm run dev
 ```
 
+Run local rule tests with `npm test`. To exercise a running Convex deployment through its public API, set `CATAN_TEST_URL` and run `npm run test:live`. The live test creates a new room, drives 3–8 seats through setup and one full round, checks action replay and stale-clock handling, and writes a sanitized JSONL log under `/tmp`. Set `CATAN_TEST_SEATS` and `CATAN_TEST_ROUNDS` to change the load. Test rooms remain until an administrator runs `npx convex run games:deleteTestGame '{"code":"ABC123","expectedHostName":"Smoke 0"}'` with that room's code.
+
 ## Kiwi deployment
 
 `compose.yaml` creates an isolated Convex instance, its dashboard, the web app, and a Cloudflare Tunnel. Convex persists SQLite and files at `/home/shlok/usb1/docker/catan/convex-data` on the hard drive. Copy the repository to kiwi, create `.env` containing `INSTANCE_SECRET` from `openssl rand -hex 32` and `CATAN_CONVEX_URL=https://catan-api.shlokbhakta.dev`, then put the tunnel's private credentials at `secrets/tunnel.json` with mode 600. Run `docker compose up -d --build`. Generate a Convex admin key with `docker compose exec convex ./generate_admin_key.sh`, then push functions with `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY` set. The public app is at [catan.shlokbhakta.dev](https://catan.shlokbhakta.dev); Convex uses `catan-api.shlokbhakta.dev`. Tailnet access remains on ports 38430, 38431, and 38433.

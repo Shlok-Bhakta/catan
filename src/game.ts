@@ -76,6 +76,7 @@ export type Game = {
   offers: Offer[];
   bank: ResourceBag;
   devDeck: DevCard[];
+  devDeckCount?: number;
   playedCards: DevCard[];
   largestArmy?: string;
   longestRoad?: string;
@@ -83,6 +84,7 @@ export type Game = {
   winner?: string;
   turnNumber: number;
   houseRules: boolean;
+  processedActionIds?: string[];
 };
 export const RESOURCES: Resource[] = ["wood", "brick", "wool", "grain", "ore"];
 export const TURN_MS = 60_000;
@@ -317,6 +319,7 @@ export function createGame(
     log: [`${hostName} opened the table.`],
     turnNumber: 0,
     houseRules: maxPlayers > 6,
+    processedActionIds: [],
   };
 }
 export function makePlayer(id: string, name: string, index: number): Player {
@@ -339,6 +342,8 @@ export function makePlayer(id: string, name: string, index: number): Player {
 }
 export function publicGame(game: Game, viewer: string): Game {
   const g = structuredClone(game);
+  g.processedActionIds = [];
+  g.devDeckCount = g.devDeck.length;
   g.devDeck = [];
   g.players = g.players.map((p) =>
     p.id === viewer
@@ -436,6 +441,16 @@ export function legalTargets(
             ? [i]
             : [],
       );
+}
+export function roadBuildingTargets(g: Game, id: string, first: number | null) {
+  const owned = player(g, id).roads.length;
+  if (owned >= 15 || (first !== null && owned >= 14)) return [];
+  if (first === null) return legalTargets(g, id, "road");
+  if (!legalTargets(g, id, "road").includes(first)) return [];
+  const preview = structuredClone(g);
+  preview.edges[first].owner = id;
+  player(preview, id).roads.push(first);
+  return legalTargets(preview, id, "road");
 }
 function checkAwards(g: Game) {
   const army = [...g.players].sort((a, b) => b.knights - a.knights)[0];

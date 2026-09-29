@@ -7,6 +7,8 @@ import {
   expireTurn,
   publicGame,
   RESOURCES,
+  legalTargets,
+  roadBuildingTargets,
   TURN_MS,
   type Game,
 } from "./game";
@@ -94,6 +96,8 @@ describe("game rules", () => {
     expect(publicState.players[1].resources).toEqual(
       Object.fromEntries(RESOURCES.map((r) => [r, 0])),
     );
+    expect(publicState.devDeck).toEqual([]);
+    expect(publicState.devDeckCount).toBe(g.devDeck.length);
   });
   it("passes directly to the next clockwise player in larger games", () => {
     let g = finishSetup(started(5));
@@ -233,6 +237,30 @@ describe("game rules", () => {
     expect(g.phase).toBe("roll");
     expect(g.players[g.turn].resources.wood).toBeGreaterThanOrEqual(2);
     expect(g.players[(g.turn + 1) % 3].resources.wood).toBe(0);
+  });
+  it("offers the second Road Building road beyond the first", () => {
+    let g = finishSetup(started());
+    g.phase = "main";
+    const id = g.players[g.turn].id;
+    g.players[g.turn].dev.push("roadBuilding");
+    const initial = legalTargets(g, id, "road");
+    const pair = initial
+      .map((first) => ({
+        first,
+        second: roadBuildingTargets(g, id, first).find(
+          (edge) => !initial.includes(edge),
+        ),
+      }))
+      .find(({ second }) => second !== undefined);
+    expect(pair).toBeDefined();
+    g = applyAction(g, id, {
+      type: "playDev",
+      card: "roadBuilding",
+      edge1: pair!.first,
+      edge2: pair!.second,
+    });
+    expect(g.players[g.turn].roads).toContain(pair!.first);
+    expect(g.players[g.turn].roads).toContain(pair!.second);
   });
   it("rejects out of turn actions", () => {
     const g = started();

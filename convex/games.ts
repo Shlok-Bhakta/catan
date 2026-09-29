@@ -106,15 +106,31 @@ export const start = mutation({
   },
 });
 export const act = mutation({
-  args: { code: v.string(), token: v.string(), action: v.any() },
+  args: {
+    code: v.string(),
+    token: v.string(),
+    action: v.any(),
+    actionId: v.optional(v.string()),
+    expectedClockSeq: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const doc = await lookup(ctx, args.code);
     const id = seat(doc, args.token);
     if (!doc || !id) throw Error("Join this table first.");
     if (!args.action || typeof args.action.type !== "string")
       throw Error("Invalid action.");
+    if (args.actionId && args.actionId.length > 64)
+      throw Error("Invalid action ID.");
+    const state = doc.state as Game;
+    if (args.actionId && state.processedActionIds?.includes(args.actionId))
+      return { status: "applied" as const };
+    if (
+      args.expectedClockSeq !== undefined &&
+      state.clockSeq !== args.expectedClockSeq
+    )
+      return { status: "stale" as const };
     const now = Date.now();
-    const previous = structuredClone(doc.state as Game);
+    const previous = structuredClone(state);
     const oldSeq = previous.clockSeq;
     const wasUnarmed = !previous.deadlineAt;
     if (!previous.deadlineAt) {
@@ -125,6 +141,12 @@ export const act = mutation({
       previous.deadlineAt <= now
         ? expireTurn(previous, now)
         : applyAction(previous, id, args.action, now);
+    const expired = previous.deadlineAt <= now;
+    if (!expired && args.actionId)
+      next.processedActionIds = [
+        ...(next.processedActionIds || []).slice(-31),
+        args.actionId,
+      ];
     await ctx.db.patch(doc._id, { state: next });
     if (next.status === "playing" && (next.clockSeq !== oldSeq || wasUnarmed)) {
       await ctx.scheduler.runAt(next.deadlineAt, internal.games.timeout, {
@@ -132,6 +154,7 @@ export const act = mutation({
         seq: next.clockSeq,
       });
     }
+    return { status: expired ? ("expired" as const) : ("applied" as const) };
   },
 });
 
@@ -176,5 +199,20 @@ export const armExisting = internalMutation({
       armed++;
     }
     return armed;
+  },
+});
+
+export const deleteTestGame = internalMutation({
+  args: { code: v.string(), expectedHostName: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await lookup(ctx, args.code);
+    if (!doc) return false;
+    const game = doc.state as Game;
+    if (game.players[0]?.name !== args.expectedHostName)
+      throw Error("Host name does not match.");
+    if (!/^(Root|Eight 0|Smoke 0)$/.test(args.expectedHostName))
+      throw Error("Only playtest rooms can be deleted here.");
+    await ctx.db.delete(doc._id);
+    return true;
   },
 });

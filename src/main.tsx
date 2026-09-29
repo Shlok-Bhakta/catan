@@ -26,6 +26,7 @@ import {
   COSTS,
   RESOURCES,
   legalTargets,
+  roadBuildingTargets,
   emptyBag,
   type Action,
   type Game,
@@ -90,6 +91,7 @@ function App() {
   const [rules, setRules] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const create = useMutation(api.games.create),
     join = useMutation(api.games.join),
     start = useMutation(api.games.start),
@@ -103,6 +105,8 @@ function App() {
     } else history.replaceState(null, "", location.pathname);
   }, [code]);
   async function run(fn: () => Promise<unknown>) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError("");
     setBusy(true);
     try {
@@ -110,6 +114,7 @@ function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -136,7 +141,27 @@ function App() {
   }
   function action(a: Action) {
     if (!game) return;
-    run(() => act({ code: game.code, token, action: a }));
+    const args = {
+      code: game.code,
+      token,
+      action: a,
+      actionId: crypto.randomUUID(),
+      expectedClockSeq: game.clockSeq,
+    };
+    run(async () => {
+      let result;
+      try {
+        result = await act(args);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("Server Error")) throw error;
+        result = await act(args);
+      }
+      if (result.status === "expired")
+        throw Error("Turn expired before your action was processed.");
+      if (result.status === "stale")
+        throw Error("The turn changed. Choose an action on the updated board.");
+    });
   }
   return (
     <>
@@ -390,9 +415,20 @@ function GameView({
     else if (g.phase === "robber" && mine) setTool("robber");
     else if (!["main"].includes(g.phase)) setTool(null);
   }, [g.phase, g.turn, mine]);
+  useEffect(() => {
+    if (!mine || !["main", "roll"].includes(g.phase) || tool !== "road") {
+      setRoadFirst(null);
+      setDevRoad(false);
+    }
+  }, [g.phase, mine, tool]);
   const legal = useMemo(
-    () => (tool && tool !== "robber" ? legalTargets(g, you, tool) : []),
-    [g, you, tool],
+    () =>
+      tool === "road" && devRoad
+        ? roadBuildingTargets(g, you, roadFirst)
+        : tool && tool !== "robber"
+          ? legalTargets(g, you, tool)
+          : [],
+    [g, you, tool, devRoad, roadFirst],
   );
   function boardClick(kind: "vertex" | "edge" | "hex", index: number) {
     if (busy || !mine) return;
@@ -569,6 +605,7 @@ function GameView({
                   g={g}
                   tool={tool}
                   legal={legal}
+                  selectedRoad={devRoad ? roadFirst : null}
                   onClick={boardClick}
                   me={you}
                   zoom={boardZoom}
@@ -963,9 +1000,18 @@ function GameView({
                       {g.phase === "main" && (
                         <button
                           className="button primary wide"
+                          disabled={
+                            g.devDeckCount === 0 ||
+                            !RESOURCES.every(
+                              (r) => me.resources[r] >= COSTS.development[r],
+                            )
+                          }
                           onClick={() => action({ type: "buyDev" })}
                         >
-                          Buy development <ArrowRight size={17} />
+                          Buy development
+                          {g.devDeckCount !== undefined &&
+                            ` (${g.devDeckCount} left)`}{" "}
+                          <ArrowRight size={17} />
                         </button>
                       )}
                       <div className="drawer-section">
@@ -1162,6 +1208,7 @@ function Board({
   g,
   tool,
   legal,
+  selectedRoad,
   onClick,
   me,
   zoom,
@@ -1169,6 +1216,7 @@ function Board({
   g: Game;
   tool: string | null;
   legal: number[];
+  selectedRoad: number | null;
   onClick: (type: "hex" | "edge" | "vertex", n: number) => void;
   me: string;
   zoom: number;
@@ -1415,6 +1463,18 @@ function Board({
                   strokeLinecap="round"
                   strokeDasharray="10 6"
                   className="target-road"
+                />
+              )}
+              {selectedRoad === i && (
+                <line
+                  x1={a.x * scale}
+                  y1={a.y * scale}
+                  x2={b.x * scale}
+                  y2={b.y * scale}
+                  stroke="#fff8d7"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  className="selected-road"
                 />
               )}
             </g>
