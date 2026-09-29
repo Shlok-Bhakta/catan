@@ -690,7 +690,6 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     const card = String(a.card) as DevCard;
     if (
       !["main", "roll"].includes(g.phase) ||
-      (g.phase === "roll" && card !== "knight") ||
       p.playedDev ||
       card === "victory" ||
       !p.dev.includes(card)

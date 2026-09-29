@@ -798,12 +798,23 @@ function GameView({
                 ) : g.phase === "discard" && g.discardIds.includes(you) ? (
                   <Discard me={me} action={action} />
                 ) : mine && g.phase === "roll" ? (
-                  <button
-                    className="button primary wide"
-                    onClick={() => action({ type: "roll" })}
-                  >
-                    <Dice5 size={19} /> Roll the dice
-                  </button>
+                  <div className="pre-roll-actions">
+                    <button
+                      className="button primary wide"
+                      onClick={() => action({ type: "roll" })}
+                    >
+                      <Dice5 size={19} /> Roll the dice
+                    </button>
+                    {me.dev.some((card) => card !== "victory") &&
+                      !me.playedDev && (
+                        <button
+                          className="pre-roll-knight"
+                          onClick={() => setPanel("development")}
+                        >
+                          <Scroll size={17} /> Play a card before rolling
+                        </button>
+                      )}
+                  </div>
                 ) : mine && g.phase === "steal" ? (
                   <div className="victims">
                     <p>Choose a player to steal from:</p>
@@ -958,266 +969,282 @@ function GameView({
               </div>
             </aside>
           </div>
-          {panel && g.phase === "main" && mine && (
-            <div className="drawer-back" onClick={() => setPanel(null)}>
-              <div className="drawer" onClick={(e) => e.stopPropagation()}>
-                <button className="drawer-close" onClick={() => setPanel(null)}>
-                  <X size={19} />
-                </button>
-                {panel === "trade" ? (
-                  <>
-                    <div className="eyebrow">MAKE A DEAL</div>
-                    <h2>Trade at the table.</h2>
-                    <div className="drawer-section">
-                      <h3>With the bank</h3>
-                      <p>
-                        Your ports set the exchange rate. Without a port, trade
-                        four of one resource for one.
-                      </p>
-                      <div className="inline-trade">
-                        <select
-                          value={r1}
-                          onChange={(e) => setR1(e.target.value as Resource)}
-                        >
-                          {RESOURCES.map((r) => (
-                            <option key={r} value={r}>
-                              {rate(r)} {labels[r]}
-                            </option>
-                          ))}
-                        </select>
-                        <span>→</span>
-                        <select
-                          value={r2}
-                          onChange={(e) => setR2(e.target.value as Resource)}
-                        >
-                          {RESOURCES.map((r) => (
-                            <option key={r} value={r}>
-                              1 {labels[r]}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="button primary"
-                          onClick={() =>
-                            action({ type: "bankTrade", from: r1, to: r2 })
-                          }
-                        >
-                          Trade
-                        </button>
-                      </div>
-                    </div>
-                    {!g.paired && (
+          {panel &&
+            (g.phase === "main" ||
+              (g.phase === "roll" && panel === "development")) &&
+            mine && (
+              <div className="drawer-back" onClick={() => setPanel(null)}>
+                <div className="drawer" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="drawer-close"
+                    onClick={() => setPanel(null)}
+                  >
+                    <X size={19} />
+                  </button>
+                  {panel === "trade" ? (
+                    <>
+                      <div className="eyebrow">MAKE A DEAL</div>
+                      <h2>Trade at the table.</h2>
                       <div className="drawer-section">
-                        <h3>With a player</h3>
+                        <h3>With the bank</h3>
                         <p>
-                          Choose what you give and what you want. Any player can
-                          accept a table offer.
+                          Your ports set the exchange rate. Without a port,
+                          trade four of one resource for one.
                         </p>
-                        <select
-                          value={target}
-                          onChange={(e) => setTarget(e.target.value)}
-                        >
-                          <option value="">Offer to everyone</option>
-                          {g.players
-                            .filter((p) => p.id !== you)
-                            .map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
+                        <div className="inline-trade">
+                          <select
+                            value={r1}
+                            onChange={(e) => setR1(e.target.value as Resource)}
+                          >
+                            {RESOURCES.map((r) => (
+                              <option key={r} value={r}>
+                                {rate(r)} {labels[r]}
                               </option>
                             ))}
-                        </select>
-                        <BagPicker
-                          title="You give"
-                          bag={give}
-                          setBag={setGive}
-                        />
-                        <BagPicker
-                          title="You want"
-                          bag={want}
-                          setBag={setWant}
-                        />
-                        <button
-                          className="button primary wide"
-                          onClick={() => {
-                            action({
-                              type: "offer",
-                              give,
-                              want,
-                              to: target || undefined,
-                            });
-                            setGive(emptyBag());
-                            setWant(emptyBag());
-                          }}
-                        >
-                          Propose trade
-                        </button>
+                          </select>
+                          <span>→</span>
+                          <select
+                            value={r2}
+                            onChange={(e) => setR2(e.target.value as Resource)}
+                          >
+                            {RESOURCES.map((r) => (
+                              <option key={r} value={r}>
+                                1 {labels[r]}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="button primary"
+                            onClick={() =>
+                              action({ type: "bankTrade", from: r1, to: r2 })
+                            }
+                          >
+                            Trade
+                          </button>
+                        </div>
                       </div>
-                    )}
-                    {g.offers.length > 0 && (
-                      <div className="drawer-section">
-                        <h3>Open offers</h3>
-                        {g.offers.map((o) => (
-                          <div className="offer" key={o.id}>
-                            <p>
-                              {g.players.find((p) => p.id === o.from)?.name}{" "}
-                              gives {bagText(o.give)} for {bagText(o.want)}
-                            </p>
-                            {o.from === you ? (
-                              <button
-                                onClick={() =>
-                                  action({ type: "cancelOffer", offerId: o.id })
-                                }
-                              >
-                                Cancel
-                              </button>
-                            ) : (
-                              (!o.to || o.to === you) && (
+                      {!g.paired && (
+                        <div className="drawer-section">
+                          <h3>With a player</h3>
+                          <p>
+                            Choose what you give and what you want. Any player
+                            can accept a table offer.
+                          </p>
+                          <select
+                            value={target}
+                            onChange={(e) => setTarget(e.target.value)}
+                          >
+                            <option value="">Offer to everyone</option>
+                            {g.players
+                              .filter((p) => p.id !== you)
+                              .map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                          </select>
+                          <BagPicker
+                            title="You give"
+                            bag={give}
+                            setBag={setGive}
+                          />
+                          <BagPicker
+                            title="You want"
+                            bag={want}
+                            setBag={setWant}
+                          />
+                          <button
+                            className="button primary wide"
+                            onClick={() => {
+                              action({
+                                type: "offer",
+                                give,
+                                want,
+                                to: target || undefined,
+                              });
+                              setGive(emptyBag());
+                              setWant(emptyBag());
+                            }}
+                          >
+                            Propose trade
+                          </button>
+                        </div>
+                      )}
+                      {g.offers.length > 0 && (
+                        <div className="drawer-section">
+                          <h3>Open offers</h3>
+                          {g.offers.map((o) => (
+                            <div className="offer" key={o.id}>
+                              <p>
+                                {g.players.find((p) => p.id === o.from)?.name}{" "}
+                                gives {bagText(o.give)} for {bagText(o.want)}
+                              </p>
+                              {o.from === you ? (
                                 <button
                                   onClick={() =>
-                                    action({ type: "accept", offerId: o.id })
+                                    action({
+                                      type: "cancelOffer",
+                                      offerId: o.id,
+                                    })
                                   }
                                 >
-                                  Accept
+                                  Cancel
                                 </button>
-                              )
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="eyebrow">A LITTLE ADVANTAGE</div>
-                    <h2>Development cards.</h2>
-                    <p>
-                      Buy a surprise, or play one card you held before this
-                      turn.
-                    </p>
-                    <button
-                      className="button primary wide"
-                      onClick={() => action({ type: "buyDev" })}
-                    >
-                      Buy a card · 1 wool, 1 grain, 1 ore{" "}
-                      <ArrowRight size={17} />
-                    </button>
-                    <div className="drawer-section">
-                      <h3>Your playable cards</h3>
-                      {me.dev.filter((c) => c !== "victory").length === 0 ? (
-                        <p>
-                          No action cards ready. New cards can be played next
-                          turn.
-                        </p>
-                      ) : (
-                        me.dev
-                          .filter((c) => c !== "victory")
-                          .map((card, i) => (
-                            <div className="dev-option" key={i}>
-                              <strong>
-                                {card === "roadBuilding"
-                                  ? "Road Building"
-                                  : card === "yearOfPlenty"
-                                    ? "Year of Plenty"
-                                    : card === "monopoly"
-                                      ? "Monopoly"
-                                      : "Knight"}
-                              </strong>
-                              {card === "knight" ? (
-                                <button
-                                  onClick={() => {
-                                    action({ type: "playDev", card });
-                                    setPanel(null);
-                                  }}
-                                >
-                                  Play
-                                </button>
-                              ) : card === "monopoly" ? (
-                                <div>
-                                  <select
-                                    value={devChoice}
-                                    onChange={(e) =>
-                                      setDevChoice(e.target.value as Resource)
-                                    }
-                                  >
-                                    {RESOURCES.map((r) => (
-                                      <option key={r} value={r}>
-                                        {labels[r]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() =>
-                                      action({
-                                        type: "playDev",
-                                        card,
-                                        resource: devChoice,
-                                      })
-                                    }
-                                  >
-                                    Play
-                                  </button>
-                                </div>
-                              ) : card === "yearOfPlenty" ? (
-                                <div>
-                                  <select
-                                    value={r1}
-                                    onChange={(e) =>
-                                      setR1(e.target.value as Resource)
-                                    }
-                                  >
-                                    {RESOURCES.map((r) => (
-                                      <option key={r} value={r}>
-                                        {labels[r]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <select
-                                    value={r2}
-                                    onChange={(e) =>
-                                      setR2(e.target.value as Resource)
-                                    }
-                                  >
-                                    {RESOURCES.map((r) => (
-                                      <option key={r} value={r}>
-                                        {labels[r]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() =>
-                                      action({ type: "playDev", card, r1, r2 })
-                                    }
-                                  >
-                                    Play
-                                  </button>
-                                </div>
                               ) : (
-                                <button
-                                  onClick={() => {
-                                    setDevRoad(true);
-                                    setTool("road");
-                                    setPanel(null);
-                                  }}
-                                >
-                                  Choose roads
-                                </button>
+                                (!o.to || o.to === you) && (
+                                  <button
+                                    onClick={() =>
+                                      action({ type: "accept", offerId: o.id })
+                                    }
+                                  >
+                                    Accept
+                                  </button>
+                                )
                               )}
                             </div>
-                          ))
+                          ))}
+                        </div>
                       )}
-                      {me.dev.filter((c) => c === "victory").length > 0 && (
-                        <p className="private-points">
-                          You hold{" "}
-                          {me.dev.filter((c) => c === "victory").length} hidden
-                          victory point card(s).
-                        </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="eyebrow">A LITTLE ADVANTAGE</div>
+                      <h2>Development cards.</h2>
+                      <p>
+                        Play one card you held before this turn. You can play it
+                        before rolling or during your action phase.
+                      </p>
+                      {g.phase === "main" && (
+                        <button
+                          className="button primary wide"
+                          onClick={() => action({ type: "buyDev" })}
+                        >
+                          Buy a card · 1 wool, 1 grain, 1 ore{" "}
+                          <ArrowRight size={17} />
+                        </button>
                       )}
-                    </div>
-                  </>
-                )}
+                      <div className="drawer-section">
+                        <h3>Your playable cards</h3>
+                        {me.dev.filter((c) => c !== "victory").length === 0 ? (
+                          <p>
+                            No action cards ready. New cards can be played next
+                            turn.
+                          </p>
+                        ) : (
+                          me.dev
+                            .filter((c) => c !== "victory")
+                            .map((card, i) => (
+                              <div className="dev-option" key={i}>
+                                <strong>
+                                  {card === "roadBuilding"
+                                    ? "Road Building"
+                                    : card === "yearOfPlenty"
+                                      ? "Year of Plenty"
+                                      : card === "monopoly"
+                                        ? "Monopoly"
+                                        : "Knight"}
+                                </strong>
+                                {card === "knight" ? (
+                                  <button
+                                    onClick={() => {
+                                      action({ type: "playDev", card });
+                                      setPanel(null);
+                                    }}
+                                  >
+                                    Play
+                                  </button>
+                                ) : card === "monopoly" ? (
+                                  <div>
+                                    <select
+                                      value={devChoice}
+                                      onChange={(e) =>
+                                        setDevChoice(e.target.value as Resource)
+                                      }
+                                    >
+                                      {RESOURCES.map((r) => (
+                                        <option key={r} value={r}>
+                                          {labels[r]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      onClick={() =>
+                                        action({
+                                          type: "playDev",
+                                          card,
+                                          resource: devChoice,
+                                        })
+                                      }
+                                    >
+                                      Play
+                                    </button>
+                                  </div>
+                                ) : card === "yearOfPlenty" ? (
+                                  <div>
+                                    <select
+                                      value={r1}
+                                      onChange={(e) =>
+                                        setR1(e.target.value as Resource)
+                                      }
+                                    >
+                                      {RESOURCES.map((r) => (
+                                        <option key={r} value={r}>
+                                          {labels[r]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={r2}
+                                      onChange={(e) =>
+                                        setR2(e.target.value as Resource)
+                                      }
+                                    >
+                                      {RESOURCES.map((r) => (
+                                        <option key={r} value={r}>
+                                          {labels[r]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      onClick={() =>
+                                        action({
+                                          type: "playDev",
+                                          card,
+                                          r1,
+                                          r2,
+                                        })
+                                      }
+                                    >
+                                      Play
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setDevRoad(true);
+                                      setTool("road");
+                                      setPanel(null);
+                                    }}
+                                  >
+                                    Choose roads
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                        )}
+                        {me.dev.filter((c) => c === "victory").length > 0 && (
+                          <p className="private-points">
+                            You hold{" "}
+                            {me.dev.filter((c) => c === "victory").length}{" "}
+                            hidden victory point card(s).
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </>
       )}
     </div>
@@ -1689,8 +1716,9 @@ function Rules({ onClose }: { onClose: () => void }) {
                 </p>
                 <p>
                   Then trade and build as many times as your resources allow.
-                  You may play one development card acquired on an earlier turn.
-                  End your turn to pass play clockwise.
+                  You may play one development card acquired on an earlier turn,
+                  before rolling or during your action phase. End your turn to
+                  pass play clockwise.
                 </p>
               </>
             )}

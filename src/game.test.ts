@@ -123,6 +123,41 @@ describe("game rules", () => {
     ).toBe(true);
     expect(g.phase).toBe("roll");
   });
+  it("lets a Knight move the robber before the dice roll", () => {
+    let g = finishSetup(started());
+    const id = g.players[g.turn].id;
+    g.players[g.turn].dev.push("knight");
+    g = applyAction(g, id, { type: "playDev", card: "knight" });
+    expect(g.phase).toBe("robber");
+    const hex = g.hexes.findIndex(
+      (_, i) =>
+        i !== g.robber &&
+        !g.hexes[i].vertices.some((v) =>
+          g.players.some(
+            (p) =>
+              p.id !== id &&
+              (p.settlements.includes(v) || p.cities.includes(v)),
+          ),
+        ),
+    );
+    g = applyAction(g, id, { type: "robber", hex });
+    expect(g.phase).toBe("roll");
+  });
+  it("lets other action cards play before rolling", () => {
+    let g = finishSetup(started());
+    const id = g.players[g.turn].id;
+    const other = g.players[(g.turn + 1) % 3];
+    other.resources.wood = 2;
+    g.players[g.turn].dev.push("monopoly");
+    g = applyAction(g, id, {
+      type: "playDev",
+      card: "monopoly",
+      resource: "wood",
+    });
+    expect(g.phase).toBe("roll");
+    expect(g.players[g.turn].resources.wood).toBeGreaterThanOrEqual(2);
+    expect(g.players[(g.turn + 1) % 3].resources.wood).toBe(0);
+  });
   it("rejects out of turn actions", () => {
     const g = started();
     const other = (g.turn + 1) % 3;

@@ -1435,3 +1435,19 @@ p {
   font-size: 11px;
   font-weight: 800;
 }
+
+.pre-roll-knight {
+  width: 100%;
+  margin-top: 15px;
+  padding: 12px;
+  border: 1px solid #d7e0d7;
+  border-radius: 6px;
+  background: #f5f8f1;
+  color: #315c60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
