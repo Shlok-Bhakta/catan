@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   applyAction,
   beginGame,
@@ -82,6 +82,20 @@ describe("game rules", () => {
       ),
     ).toBe(true);
   });
+  it("rejects coerced board indices instead of treating them as zero", () => {
+    let g = started();
+    const id = g.players[g.turn].id;
+    expect(() =>
+      applyAction(g, id, { type: "settlement", vertex: null }),
+    ).toThrow("site");
+    expect(() =>
+      applyAction(g, id, { type: "settlement", vertex: "0" }),
+    ).toThrow("site");
+    g = applyAction(g, id, { type: "settlement", vertex: 0 });
+    expect(() => applyAction(g, id, { type: "road", edge: null })).toThrow(
+      "site",
+    );
+  });
   it("keeps hands and victory cards secret from other seats", () => {
     const g = started();
     g.players[0].resources.wood = 3;
@@ -141,6 +155,163 @@ describe("game rules", () => {
     );
     expect(g.offers).toHaveLength(0);
     expect(g.players[g.turn].id).toBe(active.id);
+  });
+  it("allows counteroffers only to the active player and rejects circular trades", () => {
+    let g = finishSetup(started());
+    g.phase = "main";
+    const active = g.players[g.turn];
+    const other = g.players[(g.turn + 1) % 3];
+    const third = g.players[(g.turn + 2) % 3];
+    other.resources.grain = 2;
+    other.resources.ore = 0;
+    active.resources.ore = 1;
+    active.resources.grain = 0;
+    const give = { wood: 0, brick: 0, wool: 0, grain: 1, ore: 0 };
+    const want = { wood: 0, brick: 0, wool: 0, grain: 0, ore: 1 };
+    expect(() =>
+      applyAction(g, other.id, { type: "offer", give, want, to: third.id }),
+    ).toThrow("Offer to the active player");
+    expect(() =>
+      applyAction(g, other.id, {
+        type: "offer",
+        give,
+        want: { ...want, grain: 1 },
+      }),
+    ).toThrow("Choose resources");
+    g = applyAction(g, other.id, { type: "offer", give, want });
+    expect(g.offers[0].to).toBe(active.id);
+    expect(() =>
+      applyAction(g, third.id, { type: "accept", offerId: g.offers[0].id }),
+    ).toThrow("Offer unavailable");
+    g = applyAction(g, active.id, { type: "accept", offerId: g.offers[0].id });
+    expect(
+      g.players.find((p) => p.id === active.id)?.resources.grain,
+    ).toBeGreaterThan(0);
+    expect(g.players.find((p) => p.id === other.id)?.resources.ore).toBe(1);
+  });
+  it("handles shortages across every hex of the rolled resource", () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      let g = finishSetup(started());
+      g.phase = "roll";
+      const hex = g.hexes[0];
+      for (const h of g.hexes) h.number = null;
+      hex.number = 2;
+      hex.terrain = "wood";
+      g.robber = 1;
+      for (const p of g.players) {
+        p.settlements = [];
+        p.cities = [];
+        p.resources.wood = 0;
+      }
+      g.players[0].cities = [hex.vertices[0]];
+      g.bank.wood = 1;
+      g = applyAction(g, g.players[g.turn].id, { type: "roll" });
+      expect(g.players[0].resources.wood).toBe(1);
+      expect(g.bank.wood).toBe(0);
+
+      g.phase = "roll";
+      g.roll = undefined;
+      g.bank.wood = 2;
+      g.players[0].resources.wood = 0;
+      const otherHex = g.hexes[2];
+      otherHex.number = 2;
+      otherHex.terrain = "wood";
+      g.players[1].settlements = [
+        otherHex.vertices.find((v) => v !== hex.vertices[0])!,
+      ];
+      g = applyAction(g, g.players[g.turn].id, { type: "roll" });
+      expect(g.players[0].resources.wood).toBe(0);
+      expect(g.players[1].resources.wood).toBe(0);
+      expect(g.bank.wood).toBe(2);
+    } finally {
+      random.mockRestore();
+    }
+  });
+  it("leaves Longest Road unclaimed after a tie breaks the holder's route", () => {
+    let g = finishSetup(started());
+    g.phase = "main";
+    g.vertices = Array.from({ length: 21 }, () => ({
+      x: 0,
+      y: 0,
+      hexes: [],
+      neighbors: [],
+      edges: [],
+    }));
+    g.edges = [];
+    for (let p = 0; p < 3; p++) {
+      g.players[p].settlements = [];
+      g.players[p].cities = [];
+      g.players[p].roads = [];
+      for (let i = 0; i < 6; i++) {
+        const a = p * 7 + i,
+          b = a + 1,
+          index = g.edges.length;
+        const owner = i < (p === 2 ? 4 : 5) ? g.players[p].id : undefined;
+        g.edges.push({ a, b, owner });
+        g.vertices[a].edges.push(index);
+        g.vertices[b].edges.push(index);
+        if (owner) g.players[p].roads.push(index);
+      }
+    }
+    g.longestRoad = g.players[2].id;
+    const refresh = (state: Game) =>
+      applyAction(state, state.players[state.turn].id, {
+        type: "cancelOffer",
+        offerId: "none",
+      });
+    g = refresh(g);
+    expect(g.longestRoad).toBeUndefined();
+    g.edges[11].owner = g.players[1].id;
+    g.players[1].roads.push(11);
+    g = refresh(g);
+    expect(g.longestRoad).toBe(g.players[1].id);
+    g.edges[5].owner = g.players[0].id;
+    g.players[0].roads.push(5);
+    g = refresh(g);
+    expect(g.longestRoad).toBe(g.players[1].id);
+  });
+  it("returns Longest Road to supply when a broken holder ties the lead", () => {
+    const g = finishSetup(started());
+    g.phase = "main";
+    g.turn = 2;
+    g.vertices = Array.from({ length: 15 }, () => ({
+      x: 0,
+      y: 0,
+      hexes: [],
+      neighbors: [],
+      edges: [],
+    }));
+    g.edges = [];
+    for (const p of g.players) {
+      p.roads = [];
+      p.settlements = [];
+      p.cities = [];
+    }
+    const add = (a: number, b: number, seat: number) => {
+      const index = g.edges.length;
+      g.edges.push({ a, b, owner: g.players[seat].id });
+      g.vertices[a].edges.push(index);
+      g.vertices[b].edges.push(index);
+      g.vertices[a].neighbors.push(b);
+      g.vertices[b].neighbors.push(a);
+      g.players[seat].roads.push(index);
+    };
+    for (let i = 0; i < 7; i++) add(i, i + 1, 0);
+    for (let i = 8; i < 13; i++) add(i, i + 1, 1);
+    add(2, 14, 2);
+    g.longestRoad = g.players[0].id;
+    Object.assign(g.players[2].resources, {
+      wood: 1,
+      brick: 1,
+      wool: 1,
+      grain: 1,
+    });
+    const next = applyAction(g, g.players[2].id, {
+      type: "settlement",
+      vertex: 2,
+    });
+    expect(next.longestRoad).toBeUndefined();
   });
   it("automatically completes a timed-out opening placement", () => {
     let g = started(3);

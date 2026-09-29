@@ -361,8 +361,14 @@ export function publicGame(game: Game, viewer: string): Game {
   );
   return g;
 }
+export class RuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RuleError";
+  }
+}
 const fail = (message: string): never => {
-  throw new Error(message);
+  throw new RuleError(message);
 };
 const current = (g: Game) => g.players[g.turn];
 const player = (g: Game, id: string) =>
@@ -384,6 +390,8 @@ const transfer = (from: ResourceBag, to: ResourceBag, bag: ResourceBag) => {
   }
 };
 const total = (bag: ResourceBag) => RESOURCES.reduce((n, r) => n + bag[r], 0);
+const boardIndex = (value: unknown) =>
+  typeof value === "number" && Number.isInteger(value) ? value : NaN;
 const charge = (g: Game, p: Player, what: keyof typeof COSTS) =>
   transfer(p.resources, g.bank, COSTS[what]);
 const ownerAt = (g: Game, v: number) =>
@@ -452,7 +460,7 @@ export function roadBuildingTargets(g: Game, id: string, first: number | null) {
   player(preview, id).roads.push(first);
   return legalTargets(preview, id, "road");
 }
-function checkAwards(g: Game) {
+function checkAwards(g: Game, previous?: Game) {
   const army = [...g.players].sort((a, b) => b.knights - a.knights)[0];
   if (
     army &&
@@ -464,14 +472,23 @@ function checkAwards(g: Game) {
     .map((p) => ({ id: p.id, length: longestRoad(g, p.id) }))
     .sort((a, b) => b.length - a.length);
   const best = lengths[0];
-  if (g.longestRoad && longestRoad(g, g.longestRoad) < 5)
-    g.longestRoad = undefined;
-  if (
-    best &&
-    best.length >= 5 &&
-    (!g.longestRoad || best.length > longestRoad(g, g.longestRoad))
-  )
-    g.longestRoad = best.id;
+  const holderLength = lengths.find((x) => x.id === g.longestRoad)?.length;
+  const holderRouteBroken =
+    previous &&
+    g.longestRoad &&
+    holderLength !== undefined &&
+    longestRoad(previous, g.longestRoad) > holderLength;
+  if (!best || best.length < 5) g.longestRoad = undefined;
+  else if (
+    g.longestRoad &&
+    holderLength === best.length &&
+    !holderRouteBroken
+  ) {
+    // The holder keeps the award when another player ties their road.
+  } else {
+    const leaders = lengths.filter((x) => x.length === best.length);
+    g.longestRoad = leaders.length === 1 ? leaders[0].id : undefined;
+  }
   for (const p of g.players) {
     p.points =
       p.settlements.length +
@@ -533,22 +550,27 @@ function give(g: Game, p: Player, r: Resource, n = 1) {
   p.resources[r] += amount;
 }
 function distribute(g: Game, n: number) {
+  const claimsByResource = new Map<Resource, Map<string, number>>();
   for (const [hi, h] of g.hexes.entries()) {
     if (h.number !== n || g.robber === hi || h.terrain === "desert") continue;
-    const claims = g.players
-      .map((p) => ({
-        p,
-        n: h.vertices.reduce(
-          (sum, v) =>
-            sum +
-            (p.cities.includes(v) ? 2 : p.settlements.includes(v) ? 1 : 0),
-          0,
-        ),
-      }))
-      .filter((x) => x.n);
-    const needed = claims.reduce((a, x) => a + x.n, 0);
-    if (g.bank[h.terrain] < needed) continue;
-    for (const c of claims) give(g, c.p, h.terrain, c.n);
+    const claims = claimsByResource.get(h.terrain) || new Map<string, number>();
+    for (const p of g.players) {
+      const amount = h.vertices.reduce(
+        (sum, v) =>
+          sum + (p.cities.includes(v) ? 2 : p.settlements.includes(v) ? 1 : 0),
+        0,
+      );
+      if (amount) claims.set(p.id, (claims.get(p.id) || 0) + amount);
+    }
+    claimsByResource.set(h.terrain, claims);
+  }
+  for (const [resource, claims] of claimsByResource) {
+    const needed = [...claims.values()].reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
+    if (g.bank[resource] < needed && claims.size > 1) continue;
+    for (const [id, amount] of claims) give(g, player(g, id), resource, amount);
   }
 }
 function randomResource(p: Player): Resource | undefined {
@@ -610,11 +632,11 @@ export function applyAction(
   if (type === "accept") {
     if (g.phase !== "main") fail("Trade during the active turn.");
     const offer = g.offers.find((x) => x.id === a.offerId);
-    if (!offer) throw new Error("Offer unavailable.");
+    if (!offer) throw new RuleError("Offer unavailable.");
     if (
-      offer.from !== current(g).id ||
       offer.from === id ||
-      (offer.to && offer.to !== id)
+      (offer.to && offer.to !== id) ||
+      (offer.from !== current(g).id && id !== current(g).id)
     )
       fail("Offer unavailable.");
     const seller = player(g, offer.from);
@@ -626,9 +648,9 @@ export function applyAction(
     note(g, `${p.name} traded with ${seller.name}.`);
     return g;
   }
-  requireTurn(g, id);
+  if (type !== "offer" && type !== "cancelOffer") requireTurn(g, id);
   if (type === "settlement") {
-    const v = Number(a.vertex);
+    const v = boardIndex(a.vertex);
     if (
       !["setup-settlement", "main"].includes(g.phase) ||
       !settlementLegal(g, id, v, g.phase === "setup-settlement")
@@ -647,7 +669,7 @@ export function applyAction(
       g.phase = "setup-road";
     }
   } else if (type === "road") {
-    const e = Number(a.edge);
+    const e = boardIndex(a.edge);
     if (
       !["setup-road", "main"].includes(g.phase) ||
       !roadLegal(g, id, e, g.phase === "setup-road")
@@ -660,7 +682,7 @@ export function applyAction(
     note(g, `${p.name} built a road.`);
     if (g.phase === "setup-road") nextSetup(g, now);
   } else if (type === "city") {
-    const v = Number(a.vertex);
+    const v = boardIndex(a.vertex);
     if (g.phase !== "main" || !p.settlements.includes(v))
       fail("Upgrade one of your settlements.");
     if (p.cities.length >= 4) fail("No cities left.");
@@ -685,7 +707,7 @@ export function applyAction(
       g.phase = "main";
     }
   } else if (type === "robber") {
-    moveRobber(g, id, Number(a.hex));
+    moveRobber(g, id, boardIndex(a.hex));
   } else if (type === "steal") {
     if (g.phase !== "steal" || !g.robberVictims.includes(String(a.victim)))
       fail("Choose an adjacent player.");
@@ -760,8 +782,8 @@ export function applyAction(
       }
       note(g, `${p.name} took ${n} ${r} with Monopoly.`);
     } else if (card === "roadBuilding") {
-      const e1 = Number(a.edge1),
-        e2 = Number(a.edge2);
+      const e1 = boardIndex(a.edge1),
+        e2 = boardIndex(a.edge2);
       if (!roadLegal(g, id, e1) || p.roads.length >= 15)
         fail("Choose a legal first road.");
       g.edges[e1].owner = id;
@@ -789,7 +811,7 @@ export function applyAction(
     p.resources[to]++;
     note(g, `${p.name} traded ${rate} ${from} for 1 ${to}.`);
   } else if (type === "offer") {
-    if (g.phase !== "main") fail("Trade during your turn.");
+    if (g.phase !== "main") fail("Trade during the active turn.");
     const giveBag = a.give as ResourceBag,
       wantBag = a.want as ResourceBag;
     if (
@@ -804,13 +826,20 @@ export function applyAction(
       ) ||
       !total(giveBag) ||
       !total(wantBag) ||
+      RESOURCES.some((r) => giveBag[r] > 0 && wantBag[r] > 0) ||
       !have(p, giveBag)
     )
       fail("Choose resources you can offer.");
-    const to = a.to ? String(a.to) : undefined;
+    const to = a.to
+      ? String(a.to)
+      : id === current(g).id
+        ? undefined
+        : current(g).id;
     if (to && to === id) fail("Choose another player.");
     if (to && !g.players.some((other) => other.id === to))
       fail("Choose another player.");
+    if (id !== current(g).id && to !== current(g).id)
+      fail("Offer to the active player.");
     g.offers.push({
       id: crypto.randomUUID(),
       from: id,
@@ -820,9 +849,10 @@ export function applyAction(
     });
     note(g, `${p.name} proposed a trade.`);
   } else if (type === "cancelOffer") {
+    if (g.phase !== "main") fail("Trade during the active turn.");
     g.offers = g.offers.filter((x) => x.id !== a.offerId || x.from !== id);
   } else fail("Unknown action.");
-  checkAwards(g);
+  checkAwards(g, original);
   return g;
 }
 export function beginGame(g: Game, id: string, now = Date.now()): Game {

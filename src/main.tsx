@@ -7,6 +7,7 @@ import {
   useQuery,
 } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { ConvexError } from "convex/values";
 import {
   BookOpen,
   Copy,
@@ -104,15 +105,23 @@ function App() {
       history.replaceState(null, "", `?room=${code}`);
     } else history.replaceState(null, "", location.pathname);
   }, [code]);
-  async function run(fn: () => Promise<unknown>) {
-    if (inFlight.current) return;
+  async function run(fn: () => Promise<unknown>): Promise<boolean> {
+    if (inFlight.current) return false;
     inFlight.current = true;
     setError("");
     setBusy(true);
     try {
       await fn();
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(
+        e instanceof ConvexError
+          ? String(e.data)
+          : e instanceof Error
+            ? e.message
+            : String(e),
+      );
+      return false;
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -139,8 +148,8 @@ function App() {
       setCode(await join({ code: target.trim().toUpperCase(), name, token })),
     );
   }
-  function action(a: Action) {
-    if (!game) return;
+  function action(a: Action): Promise<boolean> {
+    if (!game) return Promise.resolve(false);
     const args = {
       code: game.code,
       token,
@@ -148,11 +157,12 @@ function App() {
       actionId: crypto.randomUUID(),
       expectedClockSeq: game.clockSeq,
     };
-    run(async () => {
+    return run(async () => {
       let result;
       try {
         result = await act(args);
       } catch (error) {
+        if (error instanceof ConvexError) throw error;
         const message = error instanceof Error ? error.message : String(error);
         if (!message.includes("Server Error")) throw error;
         result = await act(args);
@@ -378,7 +388,7 @@ function GameView({
 }: {
   game: Game;
   you: string;
-  action: (a: Action) => void;
+  action: (a: Action) => Promise<boolean>;
   start: () => void;
   busy: boolean;
   openRules: () => void;
@@ -808,6 +818,17 @@ function GameView({
                       End turn <ArrowRight size={17} />
                     </button>
                   </div>
+                ) : g.phase === "main" ? (
+                  <div className="actions">
+                    <button
+                      onClick={() => setPanel("trade")}
+                      className={panel === "trade" ? "selected" : ""}
+                    >
+                      <HandCoins size={19} />
+                      <span>Offer trade</span>
+                      <b>→</b>
+                    </button>
+                  </div>
                 ) : null}
                 {g.phase === "main" && g.offers.length > 0 && (
                   <div className="offer-list">
@@ -903,7 +924,7 @@ function GameView({
           {panel &&
             (g.phase === "main" ||
               (g.phase === "roll" && panel === "development")) &&
-            mine && (
+            (mine || (g.phase === "main" && panel === "trade")) && (
               <div className="drawer-back" onClick={() => setPanel(null)}>
                 <div className="drawer" onClick={(e) => e.stopPropagation()}>
                   <button
@@ -916,56 +937,66 @@ function GameView({
                   {panel === "trade" ? (
                     <>
                       <h2>Trade</h2>
-                      <div className="drawer-section">
-                        <h3>Bank</h3>
-                        <div className="inline-trade">
-                          <select
-                            value={r1}
-                            onChange={(e) => setR1(e.target.value as Resource)}
-                          >
-                            {RESOURCES.map((r) => (
-                              <option key={r} value={r}>
-                                {rate(r)} {labels[r]}
-                              </option>
-                            ))}
-                          </select>
-                          <span>→</span>
-                          <select
-                            value={r2}
-                            onChange={(e) => setR2(e.target.value as Resource)}
-                          >
-                            {RESOURCES.map((r) => (
-                              <option key={r} value={r}>
-                                1 {labels[r]}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            className="button primary"
-                            onClick={() =>
-                              action({ type: "bankTrade", from: r1, to: r2 })
-                            }
-                          >
-                            Trade
-                          </button>
+                      {mine && (
+                        <div className="drawer-section">
+                          <h3>Bank</h3>
+                          <div className="inline-trade">
+                            <select
+                              value={r1}
+                              onChange={(e) =>
+                                setR1(e.target.value as Resource)
+                              }
+                            >
+                              {RESOURCES.map((r) => (
+                                <option key={r} value={r}>
+                                  {rate(r)} {labels[r]}
+                                </option>
+                              ))}
+                            </select>
+                            <span>→</span>
+                            <select
+                              value={r2}
+                              onChange={(e) =>
+                                setR2(e.target.value as Resource)
+                              }
+                            >
+                              {RESOURCES.map((r) => (
+                                <option key={r} value={r}>
+                                  1 {labels[r]}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              className="button primary"
+                              onClick={() =>
+                                action({ type: "bankTrade", from: r1, to: r2 })
+                              }
+                            >
+                              Trade
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
                       {
                         <div className="drawer-section">
                           <h3>Players</h3>
-                          <select
-                            value={target}
-                            onChange={(e) => setTarget(e.target.value)}
-                          >
-                            <option value="">Offer to everyone</option>
-                            {g.players
-                              .filter((p) => p.id !== you)
-                              .map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name}
-                                </option>
-                              ))}
-                          </select>
+                          {mine ? (
+                            <select
+                              value={target}
+                              onChange={(e) => setTarget(e.target.value)}
+                            >
+                              <option value="">Offer to everyone</option>
+                              {g.players
+                                .filter((p) => p.id !== you)
+                                .map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <p>Offer to {active?.name}</p>
+                          )}
                           <BagPicker
                             title="You give"
                             bag={give}
@@ -978,13 +1009,16 @@ function GameView({
                           />
                           <button
                             className="button primary wide"
-                            onClick={() => {
-                              action({
-                                type: "offer",
-                                give,
-                                want,
-                                to: target || undefined,
-                              });
+                            onClick={async () => {
+                              if (
+                                !(await action({
+                                  type: "offer",
+                                  give,
+                                  want,
+                                  to: mine ? target || undefined : active?.id,
+                                }))
+                              )
+                                return;
                               setGive(emptyBag());
                               setWant(emptyBag());
                             }}
@@ -1746,6 +1780,11 @@ function Rules({ onClose }: { onClose: () => void }) {
                   produces nothing.
                 </p>
                 <p>
+                  If the bank cannot pay everyone a resource, nobody receives
+                  that resource. If only one player is owed it, they take as
+                  many cards as remain.
+                </p>
+                <p>
                   Then trade and build as many times as your resources allow.
                   You may play one development card acquired on an earlier turn,
                   before rolling or during your action phase. End your turn to
@@ -1779,9 +1818,10 @@ function Rules({ onClose }: { onClose: () => void }) {
               <>
                 <h3>Trade & ports</h3>
                 <p>
-                  On your turn, offer resources to other players. The player
-                  accepting must have the requested cards, and both sides
-                  exchange at once.
+                  During the active turn, that player may offer resources to
+                  others. Other players may counteroffer to the active player.
+                  Both sides exchange at once when an offer is accepted. A
+                  resource cannot appear on both sides of the same trade.
                 </p>
                 <p>
                   You can also trade with the bank. The normal rate is four of
@@ -1848,7 +1888,9 @@ function Rules({ onClose }: { onClose: () => void }) {
                   The first player to build a continuous road of at least five
                   segments takes Longest Road, worth 2 points. Opponents'
                   buildings break a route; branches count only along one path.
-                  Another player must build a longer route to take it.
+                  Another player must build a longer route to take it. If a
+                  broken route leaves the lead tied, the award returns to the
+                  supply until one player leads alone.
                 </p>
                 <p>Reach 8 points during your turn to win.</p>
               </>

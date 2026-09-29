@@ -1,6 +1,6 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import {
   applyAction,
   beginGame,
@@ -8,6 +8,7 @@ import {
   expireTurn,
   makePlayer,
   publicGame,
+  RuleError,
   TURN_MS,
   type Game,
 } from "../src/game";
@@ -19,7 +20,17 @@ const lookup = async (ctx: any, code: string) =>
     .withIndex("by_code", (q: any) => q.eq("code", code.toUpperCase()))
     .unique();
 const seat = (doc: any, token: string) =>
-  doc?.seats.find((x: any) => x.token === token)?.id;
+  token.length >= 20
+    ? doc?.seats.find((x: any) => x.token === token)?.id
+    : undefined;
+const gameAction = <T>(fn: () => T): T => {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof RuleError) throw new ConvexError(error.message);
+    throw error;
+  }
+};
 export const get = query({
   args: { code: v.string(), token: v.string() },
   handler: async (ctx, args) => {
@@ -50,8 +61,8 @@ export const create = mutation({
       args.maxPlayers < 3 ||
       args.maxPlayers > 8
     )
-      throw Error("Choose 3 to 8 seats.");
-    if (args.token.length < 20) throw Error("Invalid session.");
+      throw new ConvexError("Choose 3 to 8 seats.");
+    if (args.token.length < 20) throw new ConvexError("Invalid session.");
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
     for (let i = 0; i < 12; i++) {
@@ -61,7 +72,8 @@ export const create = mutation({
       ).join("");
       if (!(await lookup(ctx, code))) break;
     }
-    if (await lookup(ctx, code)) throw Error("Could not create a unique code.");
+    if (await lookup(ctx, code))
+      throw new ConvexError("Could not create a unique code.");
     const id = crypto.randomUUID();
     const state = createGame(code, id, cleanName(args.name), args.maxPlayers);
     await ctx.db.insert("games", {
@@ -75,12 +87,15 @@ export const create = mutation({
 export const join = mutation({
   args: { code: v.string(), name: v.string(), token: v.string() },
   handler: async (ctx, args) => {
+    if (args.token.length < 20) throw new ConvexError("Invalid session.");
     const doc = await lookup(ctx, args.code);
-    if (!doc) throw Error("No table found for that code.");
+    if (!doc) throw new ConvexError("No table found for that code.");
     if (seat(doc, args.token)) return doc.code;
     const g = structuredClone(doc.state as Game);
-    if (g.status !== "lobby") throw Error("This game has already started.");
-    if (g.players.length >= g.maxPlayers) throw Error("This table is full.");
+    if (g.status !== "lobby")
+      throw new ConvexError("This game has already started.");
+    if (g.players.length >= g.maxPlayers)
+      throw new ConvexError("This table is full.");
     const id = crypto.randomUUID();
     g.players.push(makePlayer(id, cleanName(args.name), g.players.length));
     g.log.unshift(`${cleanName(args.name)} joined the table.`);
@@ -96,8 +111,8 @@ export const start = mutation({
   handler: async (ctx, args) => {
     const doc = await lookup(ctx, args.code);
     const id = seat(doc, args.token);
-    if (!doc || !id) throw Error("Join this table first.");
-    const next = beginGame(doc.state as Game, id);
+    if (!doc || !id) throw new ConvexError("Join this table first.");
+    const next = gameAction(() => beginGame(doc.state as Game, id));
     await ctx.db.patch(doc._id, { state: next });
     await ctx.scheduler.runAt(next.deadlineAt, internal.games.timeout, {
       gameId: doc._id,
@@ -116,11 +131,11 @@ export const act = mutation({
   handler: async (ctx, args) => {
     const doc = await lookup(ctx, args.code);
     const id = seat(doc, args.token);
-    if (!doc || !id) throw Error("Join this table first.");
+    if (!doc || !id) throw new ConvexError("Join this table first.");
     if (!args.action || typeof args.action.type !== "string")
-      throw Error("Invalid action.");
+      throw new ConvexError("Invalid action.");
     if (args.actionId && args.actionId.length > 64)
-      throw Error("Invalid action ID.");
+      throw new ConvexError("Invalid action ID.");
     const state = doc.state as Game;
     if (args.actionId && state.processedActionIds?.includes(args.actionId))
       return { status: "applied" as const };
@@ -140,7 +155,7 @@ export const act = mutation({
     const next =
       previous.deadlineAt <= now
         ? expireTurn(previous, now)
-        : applyAction(previous, id, args.action, now);
+        : gameAction(() => applyAction(previous, id, args.action, now));
     const expired = previous.deadlineAt <= now;
     if (!expired && args.actionId)
       next.processedActionIds = [
@@ -202,6 +217,18 @@ export const armExisting = internalMutation({
   },
 });
 
+export const findTestGames = internalQuery({
+  args: { expectedHostName: v.string() },
+  handler: async (ctx, args) => {
+    if (!/^(Root|Eight 0|Smoke 0|Chaos [A-Z])$/.test(args.expectedHostName))
+      throw new ConvexError("Only playtest rooms can be listed here.");
+    const docs = await ctx.db.query("games").collect();
+    return docs
+      .filter((doc) => (doc.state as Game).players[0]?.name === args.expectedHostName)
+      .map((doc) => ({ code: doc.code, createdAt: doc._creationTime }));
+  },
+});
+
 export const deleteTestGame = internalMutation({
   args: { code: v.string(), expectedHostName: v.string() },
   handler: async (ctx, args) => {
@@ -210,7 +237,7 @@ export const deleteTestGame = internalMutation({
     const game = doc.state as Game;
     if (game.players[0]?.name !== args.expectedHostName)
       throw Error("Host name does not match.");
-    if (!/^(Root|Eight 0|Smoke 0)$/.test(args.expectedHostName))
+    if (!/^(Root|Eight 0|Smoke 0|Chaos [A-Z])$/.test(args.expectedHostName))
       throw Error("Only playtest rooms can be deleted here.");
     await ctx.db.delete(doc._id);
     return true;
