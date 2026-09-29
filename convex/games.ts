@@ -1,0 +1,112 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+import {
+  applyAction,
+  beginGame,
+  createGame,
+  makePlayer,
+  publicGame,
+  type Game,
+} from "../src/game";
+const cleanName = (name: string) =>
+  name.trim().slice(0, 24).replace(/[<>]/g, "") || "Guest";
+const lookup = async (ctx: any, code: string) =>
+  ctx.db
+    .query("games")
+    .withIndex("by_code", (q: any) => q.eq("code", code.toUpperCase()))
+    .unique();
+const seat = (doc: any, token: string) =>
+  doc?.seats.find((x: any) => x.token === token)?.id;
+export const get = query({
+  args: { code: v.string(), token: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await lookup(ctx, args.code);
+    if (!doc) return null;
+    const id = seat(doc, args.token);
+    if (!id)
+      return {
+        needsJoin: true,
+        code: doc.code,
+        status: (doc.state as Game).status,
+        players: (doc.state as Game).players.map((p) => p.name),
+        full:
+          (doc.state as Game).players.length >= (doc.state as Game).maxPlayers,
+      };
+    return {
+      needsJoin: false,
+      game: publicGame(doc.state as Game, id),
+      you: id,
+    };
+  },
+});
+export const create = mutation({
+  args: { name: v.string(), token: v.string(), maxPlayers: v.number() },
+  handler: async (ctx, args) => {
+    if (
+      !Number.isInteger(args.maxPlayers) ||
+      args.maxPlayers < 3 ||
+      args.maxPlayers > 8
+    )
+      throw Error("Choose 3 to 8 seats.");
+    if (args.token.length < 20) throw Error("Invalid session.");
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 12; i++) {
+      code = Array.from(
+        { length: 6 },
+        () => alphabet[Math.floor(Math.random() * alphabet.length)],
+      ).join("");
+      if (!(await lookup(ctx, code))) break;
+    }
+    if (await lookup(ctx, code)) throw Error("Could not create a unique code.");
+    const id = crypto.randomUUID();
+    const state = createGame(code, id, cleanName(args.name), args.maxPlayers);
+    await ctx.db.insert("games", {
+      code,
+      state,
+      seats: [{ id, token: args.token }],
+    });
+    return code;
+  },
+});
+export const join = mutation({
+  args: { code: v.string(), name: v.string(), token: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await lookup(ctx, args.code);
+    if (!doc) throw Error("No table found for that code.");
+    if (seat(doc, args.token)) return doc.code;
+    const g = structuredClone(doc.state as Game);
+    if (g.status !== "lobby") throw Error("This game has already started.");
+    if (g.players.length >= g.maxPlayers) throw Error("This table is full.");
+    const id = crypto.randomUUID();
+    g.players.push(makePlayer(id, cleanName(args.name), g.players.length));
+    g.log.unshift(`${cleanName(args.name)} joined the table.`);
+    await ctx.db.patch(doc._id, {
+      state: g,
+      seats: [...doc.seats, { id, token: args.token }],
+    });
+    return doc.code;
+  },
+});
+export const start = mutation({
+  args: { code: v.string(), token: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await lookup(ctx, args.code);
+    const id = seat(doc, args.token);
+    if (!doc || !id) throw Error("Join this table first.");
+    await ctx.db.patch(doc._id, { state: beginGame(doc.state as Game, id) });
+  },
+});
+export const act = mutation({
+  args: { code: v.string(), token: v.string(), action: v.any() },
+  handler: async (ctx, args) => {
+    const doc = await lookup(ctx, args.code);
+    const id = seat(doc, args.token);
+    if (!doc || !id) throw Error("Join this table first.");
+    if (!args.action || typeof args.action.type !== "string")
+      throw Error("Invalid action.");
+    await ctx.db.patch(doc._id, {
+      state: applyAction(doc.state as Game, id, args.action),
+    });
+  },
+});
