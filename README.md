@@ -2,7 +2,7 @@
 
 An unofficial Catan-style digital table for 3–8 players. The app uses React and Convex. It has private room codes, realtime board updates, server-enforced turns, trades, development cards, the robber, awards, and an original in-app rules guide.
 
-Official Catan play covers 3–6 players. Seven and eight players use this app's larger house board and standard clockwise turns. Five and six players use the current paired-player turn rule. Seven and eight players use the same timing as a house extension.
+Official Catan play covers 3–6 players. This table supports up to eight with a larger house board. Quickplay house rules apply to every table: one clockwise turn per player, 60 seconds for each opening settlement and road pair and every later turn, resources from both opening settlements, and an 8-point win target. The server automatically completes mandatory actions and passes the turn when time runs out.
 
 ## Play
 

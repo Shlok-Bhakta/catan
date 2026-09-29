@@ -65,8 +65,8 @@ export type Game = {
     | "main"
     | "finished";
   robberResume?: "roll" | "main";
-  primaryTurn: number;
-  paired: boolean;
+  deadlineAt: number;
+  clockSeq: number;
   setupOrder: number[];
   setupStep: number;
   lastSettlement?: number;
@@ -85,6 +85,8 @@ export type Game = {
   houseRules: boolean;
 };
 export const RESOURCES: Resource[] = ["wood", "brick", "wool", "grain", "ore"];
+export const TURN_MS = 60_000;
+export const WIN_POINTS = 8;
 export const COLORS = [
   "#df7857",
   "#6d9e9a",
@@ -294,8 +296,8 @@ export function createGame(
     ...board,
     turn: 0,
     phase: "setup-settlement",
-    primaryTurn: 0,
-    paired: false,
+    deadlineAt: 0,
+    clockSeq: 0,
     setupOrder: [],
     setupStep: 0,
     discardIds: [],
@@ -466,7 +468,7 @@ function checkAwards(g: Game) {
     ).length;
     p.points += p.hiddenPoints;
   }
-  if (g.status === "playing" && current(g)?.points >= 10) {
+  if (g.status === "playing" && current(g)?.points >= WIN_POINTS) {
     g.winner = current(g).id;
     g.status = "finished";
     g.phase = "finished";
@@ -496,19 +498,19 @@ export function longestRoad(g: Game, id: string) {
   }
   return best;
 }
-function nextSetup(g: Game) {
+function nextSetup(g: Game, now: number) {
   g.setupStep++;
   if (g.setupStep >= g.setupOrder.length) {
     g.phase = "roll";
     g.turn = g.setupOrder[0];
-    g.primaryTurn = g.turn;
-    g.paired = false;
     g.turnNumber = 1;
     note(g, `${current(g).name}'s turn begins.`);
   } else {
     g.turn = g.setupOrder[g.setupStep];
     g.phase = "setup-settlement";
   }
+  g.clockSeq++;
+  g.deadlineAt = now + TURN_MS;
 }
 function give(g: Game, p: Player, r: Resource, n = 1) {
   const amount = Math.min(g.bank[r], n);
@@ -563,7 +565,12 @@ function moveRobber(g: Game, id: string, hex: number) {
   note(g, `${player(g, id).name} moved the robber.`);
 }
 export type Action = { type: string; [key: string]: unknown };
-export function applyAction(original: Game, id: string, a: Action): Game {
+export function applyAction(
+  original: Game,
+  id: string,
+  a: Action,
+  now = Date.now(),
+): Game {
   const g = structuredClone(original),
     p = player(g, id),
     type = a.type;
@@ -598,11 +605,9 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     p.settlements.push(v);
     note(g, `${p.name} built a settlement.`);
     if (g.phase === "setup-settlement") {
-      if (g.setupStep >= g.players.length) {
-        for (const hi of g.vertices[v].hexes) {
-          const t = g.hexes[hi].terrain;
-          if (t !== "desert") give(g, p, t);
-        }
+      for (const hi of g.vertices[v].hexes) {
+        const t = g.hexes[hi].terrain;
+        if (t !== "desert") give(g, p, t);
       }
       g.lastSettlement = v;
       g.phase = "setup-road";
@@ -619,7 +624,7 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     g.edges[e].owner = id;
     p.roads.push(e);
     note(g, `${p.name} built a road.`);
-    if (g.phase === "setup-road") nextSetup(g);
+    if (g.phase === "setup-road") nextSetup(g, now);
   } else if (type === "city") {
     const v = Number(a.vertex);
     if (g.phase !== "main" || !p.settlements.includes(v))
@@ -665,20 +670,13 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     p.newDev = [];
     p.playedDev = false;
     g.offers = [];
-    if (g.players.length > 4 && !g.paired) {
-      g.paired = true;
-      g.turn = (g.primaryTurn + 2) % g.players.length;
-      g.phase = "main";
-      note(g, `${current(g).name}'s paired action phase begins.`);
-    } else {
-      g.paired = false;
-      g.primaryTurn = (g.primaryTurn + 1) % g.players.length;
-      g.turn = g.primaryTurn;
-      g.turnNumber++;
-      g.roll = undefined;
-      g.phase = "roll";
-      note(g, `${current(g).name}'s turn begins.`);
-    }
+    g.turn = (g.turn + 1) % g.players.length;
+    g.turnNumber++;
+    g.roll = undefined;
+    g.phase = "roll";
+    g.clockSeq++;
+    g.deadlineAt = now + TURN_MS;
+    note(g, `${current(g).name}'s turn begins.`);
   } else if (type === "buyDev") {
     if (g.phase !== "main" || !g.devDeck.length)
       fail("No development cards available.");
@@ -757,8 +755,7 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     p.resources[to]++;
     note(g, `${p.name} traded ${rate} ${from} for 1 ${to}.`);
   } else if (type === "offer") {
-    if (g.phase !== "main" || g.paired)
-      fail("Player trades are unavailable in a paired action phase.");
+    if (g.phase !== "main") fail("Trade during your turn.");
     const giveBag = a.give as ResourceBag,
       wantBag = a.want as ResourceBag;
     if (
@@ -787,8 +784,7 @@ export function applyAction(original: Game, id: string, a: Action): Game {
     });
     note(g, `${p.name} proposed a trade.`);
   } else if (type === "accept") {
-    if (g.phase !== "main" || g.paired)
-      fail("Player trades are unavailable in a paired action phase.");
+    if (g.phase !== "main") fail("Trade during your turn.");
     const offer = g.offers.find((x) => x.id === a.offerId);
     if (!offer) throw new Error("Offer unavailable.");
     if (offer.from === id || (offer.to && offer.to !== id))
@@ -806,7 +802,7 @@ export function applyAction(original: Game, id: string, a: Action): Game {
   checkAwards(g);
   return g;
 }
-export function beginGame(g: Game, id: string): Game {
+export function beginGame(g: Game, id: string, now = Date.now()): Game {
   if (g.host !== id) fail("Only the host can start.");
   if (g.status !== "lobby" || g.players.length < 3)
     fail("You need at least three players.");
@@ -816,9 +812,66 @@ export function beginGame(g: Game, id: string): Game {
   const order = next.players.map((_, i) => (first + i) % next.players.length);
   next.setupOrder = [...order, ...order.slice().reverse()];
   next.turn = next.setupOrder[0];
-  next.primaryTurn = first;
-  next.paired = false;
   next.phase = "setup-settlement";
+  next.clockSeq = (next.clockSeq || 0) + 1;
+  next.deadlineAt = now + TURN_MS;
   note(next, "The opening placement begins.");
   return next;
+}
+
+export function expireTurn(original: Game, now = Date.now()): Game {
+  let g = structuredClone(original);
+  if (g.status !== "playing") return g;
+  const seq = g.clockSeq;
+  note(g, `${current(g).name} ran out of time.`);
+  for (
+    let step = 0;
+    step < 24 && g.status === "playing" && g.clockSeq === seq;
+    step++
+  ) {
+    const id = current(g).id;
+    if (g.phase === "setup-settlement") {
+      const vertex = legalTargets(g, id, "settlement")[0];
+      if (vertex === undefined) break;
+      g = applyAction(g, id, { type: "settlement", vertex }, now);
+    } else if (g.phase === "setup-road") {
+      const edge = legalTargets(g, id, "road")[0];
+      if (edge === undefined) break;
+      g = applyAction(g, id, { type: "road", edge }, now);
+    } else if (g.phase === "roll") {
+      g = applyAction(g, id, { type: "roll" }, now);
+    } else if (g.phase === "discard") {
+      const discardId = g.discardIds[0];
+      if (!discardId) break;
+      const holder = player(g, discardId);
+      let remaining = Math.floor(total(holder.resources) / 2);
+      const bag = emptyBag();
+      for (const resource of RESOURCES) {
+        bag[resource] = Math.min(holder.resources[resource], remaining);
+        remaining -= bag[resource];
+      }
+      g = applyAction(g, discardId, { type: "discard", bag }, now);
+    } else if (g.phase === "robber") {
+      const choices = g.hexes.map((_, i) => i).filter((i) => i !== g.robber);
+      g = applyAction(
+        g,
+        id,
+        {
+          type: "robber",
+          hex: choices[Math.floor(Math.random() * choices.length)],
+        },
+        now,
+      );
+    } else if (g.phase === "steal") {
+      g = applyAction(
+        g,
+        id,
+        { type: "steal", victim: g.robberVictims[0] },
+        now,
+      );
+    } else if (g.phase === "main") {
+      g = applyAction(g, id, { type: "end" }, now);
+    } else break;
+  }
+  return g;
 }

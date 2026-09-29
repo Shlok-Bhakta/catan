@@ -1,11 +1,14 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
   applyAction,
   beginGame,
   createGame,
+  expireTurn,
   makePlayer,
   publicGame,
+  TURN_MS,
   type Game,
 } from "../src/game";
 const cleanName = (name: string) =>
@@ -94,7 +97,12 @@ export const start = mutation({
     const doc = await lookup(ctx, args.code);
     const id = seat(doc, args.token);
     if (!doc || !id) throw Error("Join this table first.");
-    await ctx.db.patch(doc._id, { state: beginGame(doc.state as Game, id) });
+    const next = beginGame(doc.state as Game, id);
+    await ctx.db.patch(doc._id, { state: next });
+    await ctx.scheduler.runAt(next.deadlineAt, internal.games.timeout, {
+      gameId: doc._id,
+      seq: next.clockSeq,
+    });
   },
 });
 export const act = mutation({
@@ -105,8 +113,68 @@ export const act = mutation({
     if (!doc || !id) throw Error("Join this table first.");
     if (!args.action || typeof args.action.type !== "string")
       throw Error("Invalid action.");
-    await ctx.db.patch(doc._id, {
-      state: applyAction(doc.state as Game, id, args.action),
-    });
+    const now = Date.now();
+    const previous = structuredClone(doc.state as Game);
+    const oldSeq = previous.clockSeq;
+    const wasUnarmed = !previous.deadlineAt;
+    if (!previous.deadlineAt) {
+      previous.clockSeq = (previous.clockSeq || 0) + 1;
+      previous.deadlineAt = now + TURN_MS;
+    }
+    const next =
+      previous.deadlineAt <= now
+        ? expireTurn(previous, now)
+        : applyAction(previous, id, args.action, now);
+    await ctx.db.patch(doc._id, { state: next });
+    if (next.status === "playing" && (next.clockSeq !== oldSeq || wasUnarmed)) {
+      await ctx.scheduler.runAt(next.deadlineAt, internal.games.timeout, {
+        gameId: doc._id,
+        seq: next.clockSeq,
+      });
+    }
+  },
+});
+
+export const timeout = internalMutation({
+  args: { gameId: v.id("games"), seq: v.number() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.gameId);
+    if (!doc) return;
+    const game = doc.state as Game;
+    if (game.status !== "playing" || game.clockSeq !== args.seq) return;
+    const now = Date.now();
+    if (now < game.deadlineAt) {
+      await ctx.scheduler.runAt(game.deadlineAt, internal.games.timeout, args);
+      return;
+    }
+    const next = expireTurn(game, now);
+    await ctx.db.patch(doc._id, { state: next });
+    if (next.status === "playing") {
+      await ctx.scheduler.runAt(next.deadlineAt, internal.games.timeout, {
+        gameId: doc._id,
+        seq: next.clockSeq,
+      });
+    }
+  },
+});
+
+export const armExisting = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const docs = await ctx.db.query("games").collect();
+    let armed = 0;
+    for (const doc of docs) {
+      const game = doc.state as Game;
+      if (game.status !== "playing" || game.deadlineAt) continue;
+      game.clockSeq = (game.clockSeq || 0) + 1;
+      game.deadlineAt = Date.now() + TURN_MS;
+      await ctx.db.patch(doc._id, { state: game });
+      await ctx.scheduler.runAt(game.deadlineAt, internal.games.timeout, {
+        gameId: doc._id,
+        seq: game.clockSeq,
+      });
+      armed++;
+    }
+    return armed;
   },
 });

@@ -823,6 +823,30 @@ p {
   font-weight: 800;
   letter-spacing: 0.08em;
 }
+.turn-clock {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  border-radius: 11px;
+  background: #e7f1eb;
+  color: #235947;
+}
+.turn-clock span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.turn-clock strong {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+}
+.turn-clock.urgent {
+  background: #fce6dc;
+  color: #a43420;
+}
 .turn-hero {
   display: flex;
   gap: 12px;

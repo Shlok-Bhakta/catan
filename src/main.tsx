@@ -500,6 +500,15 @@ function GameView({
   const me = g.players.find((p) => p.id === you)!;
   const active = g.players[g.turn];
   const mine = active?.id === you;
+  const [clockNow, setClockNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+  const secondsLeft =
+    g.status === "playing"
+      ? Math.max(0, Math.ceil((g.deadlineAt - clockNow) / 1000))
+      : 0;
   const [tool, setTool] = useState<
     "road" | "settlement" | "city" | "robber" | null
   >(null);
@@ -572,9 +581,7 @@ function GameView({
                 ? `${active?.name} is stealing a card`
                 : g.phase === "roll"
                   ? `${active?.name} is rolling`
-                  : g.paired
-                    ? `${active?.name} is taking a paired action phase`
-                    : `${active?.name} is building & trading`;
+                  : `${active?.name} is building & trading`;
   const rate = (r: Resource) => {
     const ports = [...me.settlements, ...me.cities].flatMap((v) =>
       g.vertices[v].port ? [g.vertices[v].port] : [],
@@ -776,9 +783,20 @@ function GameView({
                 <div className="panel-top">
                   <span className="eyebrow">ON THE TABLE</span>
                   <span className="phase-pill">
-                    {g.paired ? "paired action" : g.phase.replace("-", " ")}
+                    {g.phase.replace("-", " ")}
                   </span>
                 </div>
+                {g.status === "playing" && (
+                  <div
+                    className={
+                      "turn-clock" + (secondsLeft <= 15 ? " urgent" : "")
+                    }
+                    aria-live={secondsLeft <= 10 ? "polite" : "off"}
+                  >
+                    <span>TURN CLOCK</span>
+                    <strong>{secondsLeft}s</strong>
+                  </div>
+                )}
                 <div className="turn-hero">
                   <span
                     className="turn-avatar"
@@ -1023,7 +1041,7 @@ function GameView({
                           </button>
                         </div>
                       </div>
-                      {!g.paired && (
+                      {
                         <div className="drawer-section">
                           <h3>With a player</h3>
                           <p>
@@ -1069,7 +1087,7 @@ function GameView({
                             Propose trade
                           </button>
                         </div>
-                      )}
+                      }
                       {g.offers.length > 0 && (
                         <div className="drawer-section">
                           <h3>Open offers</h3>
@@ -1672,11 +1690,10 @@ function Rules({ onClose }: { onClose: () => void }) {
               <>
                 <h3>Build a life on the island.</h3>
                 <p>
-                  Be the first player to reach{" "}
-                  <strong>10 victory points</strong> on your turn. You earn
-                  points by building settlements and cities, holding the Longest
-                  Road or Largest Army award, and drawing victory point
-                  development cards.
+                  Be the first player to reach <strong>8 victory points</strong>{" "}
+                  on your turn. You earn points by building settlements and
+                  cities, holding the Longest Road or Largest Army award, and
+                  drawing victory point development cards.
                 </p>
                 <p>
                   The island produces lumber, brick, wool, grain, and ore. Your
@@ -1695,8 +1712,8 @@ function Rules({ onClose }: { onClose: () => void }) {
                 <p>
                   Players place one settlement and one adjoining road in order,
                   then place a second settlement and road in reverse order. The
-                  second settlement immediately collects one resource from each
-                  adjacent producing hex.
+                  first and second settlements each collect one resource from
+                  every adjacent producing hex as soon as it is placed.
                 </p>
                 <p>
                   Settlements must be at least two intersections apart. During
@@ -1819,12 +1836,12 @@ function Rules({ onClose }: { onClose: () => void }) {
                   buildings break a route; branches count only along one path.
                   Another player must build a longer route to take it.
                 </p>
-                <p>Reach 10 points during your turn to win.</p>
+                <p>Reach 8 points during your turn to win.</p>
               </>
             )}
             {section === "extended" && (
               <>
-                <h3>More friends, more island.</h3>
+                <h3>Quickplay at every table.</h3>
                 <p>
                   Games with five or more players use a larger island and a
                   24-card supply of each resource. Seven and eight seats are a
@@ -1832,12 +1849,14 @@ function Rules({ onClose }: { onClose: () => void }) {
                   players.
                 </p>
                 <p>
-                  For five or more players, each turn has a production and
-                  action phase for the active player, then a paired action phase
-                  for the player two seats to their left. The paired player may
-                  build, buy or play development cards, and trade with the bank,
-                  but may not trade with players. Afterward, the next clockwise
-                  player rolls. The win target stays at 10 points.
+                  Every player gets one normal turn in clockwise order. There
+                  are no paired turns. Each opening settlement and road pair
+                  gets 60 seconds, and each later turn gets 60 seconds total.
+                  The clock does not reset after rolling, trading, or building.
+                  When it expires, the game finishes any required roll, discard,
+                  or robber move automatically, then passes to the next player.
+                  The first player to reach 8 points on their turn wins. These
+                  quickplay rules are house rules for this table.
                 </p>
                 <a
                   href="https://www.catan.com/understand-catan/game-rules"

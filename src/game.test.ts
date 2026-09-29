@@ -4,8 +4,10 @@ import {
   beginGame,
   createGame,
   makePlayer,
+  expireTurn,
   publicGame,
   RESOURCES,
+  TURN_MS,
   type Game,
 } from "./game";
 function started(count = 3) {
@@ -93,26 +95,59 @@ describe("game rules", () => {
       Object.fromEntries(RESOURCES.map((r) => [r, 0])),
     );
   });
-  it("gives the paired player an action phase in larger games", () => {
+  it("passes directly to the next clockwise player in larger games", () => {
     let g = finishSetup(started(5));
     expect(g.phase).toBe("roll");
     g.phase = "main";
     const first = g.turn;
-    g = applyAction(g, `p${first}`, { type: "end" });
-    expect(g.paired).toBe(true);
-    expect(g.turn).toBe((first + 2) % 5);
-    expect(g.phase).toBe("main");
-    expect(() =>
-      applyAction(g, `p${(first + 2) % 5}`, {
-        type: "offer",
-        give: { wood: 1, brick: 0, wool: 0, grain: 0, ore: 0 },
-        want: { wood: 0, brick: 1, wool: 0, grain: 0, ore: 0 },
-      }),
-    ).toThrow("Player trades");
-    g = applyAction(g, `p${(first + 2) % 5}`, { type: "end" });
-    expect(g.paired).toBe(false);
+    const seq = g.clockSeq;
+    g = applyAction(g, `p${first}`, { type: "end" }, 1000);
     expect(g.turn).toBe((first + 1) % 5);
     expect(g.phase).toBe("roll");
+    expect(g.clockSeq).toBe(seq + 1);
+    expect(g.deadlineAt).toBe(1000 + TURN_MS);
+  });
+  it("automatically completes a timed-out opening placement", () => {
+    let g = started(3);
+    const first = g.turn;
+    const seq = g.clockSeq;
+    g = expireTurn(g, g.deadlineAt);
+    expect(g.players[first].settlements).toHaveLength(1);
+    expect(g.players[first].roads).toHaveLength(1);
+    expect(g.clockSeq).toBe(seq + 1);
+    expect(g.phase).toBe("setup-settlement");
+  });
+  it("grants resources at the first opening settlement", () => {
+    let g = started();
+    const id = g.players[g.turn].id;
+    const vertex = g.vertices.findIndex((v) =>
+      v.hexes.some((hi) => g.hexes[hi].terrain !== "desert"),
+    );
+    g = applyAction(g, id, { type: "settlement", vertex });
+    expect(
+      RESOURCES.reduce((sum, r) => sum + g.players[g.turn].resources[r], 0),
+    ).toBeGreaterThan(0);
+  });
+  it("automatically rolls and passes a timed-out normal turn", () => {
+    let g = finishSetup(started(3));
+    const first = g.turn;
+    const seq = g.clockSeq;
+    g = expireTurn(g, g.deadlineAt);
+    expect(g.roll).toBeUndefined();
+    expect(g.turn).toBe((first + 1) % 3);
+    expect(g.phase).toBe("roll");
+    expect(g.clockSeq).toBe(seq + 1);
+  });
+  it("finishes at eight points", () => {
+    let g = finishSetup(started());
+    g.phase = "main";
+    g.players[g.turn].dev = Array(6).fill("victory");
+    g = applyAction(g, g.players[g.turn].id, {
+      type: "cancelOffer",
+      offerId: "none",
+    });
+    expect(g.players[g.turn].points).toBe(8);
+    expect(g.status).toBe("finished");
   });
   it("can complete opening placement with eight players", () => {
     const g = finishSetup(started(8));
